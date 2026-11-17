@@ -34,7 +34,7 @@ h1 span {color:var(--acid)}
 .stage {position:relative; aspect-ratio:720/500; border-radius:7px; background:#202224; overflow:hidden; isolation:isolate; touch-action:none; cursor:crosshair}
 canvas {display:block; width:100%; height:100%}
 .overlay {position:absolute; inset:0; display:grid; place-items:center; padding:10px; background:#15151969; cursor:default}
-.card {background:#1b1b1e; border:1px solid #50504b; border-radius:13px; width:min(94%,360px); padding:22px 25px 17px; box-shadow:7px 7px 0 #101011a8; text-align:center}
+.card {background:#1b1b1e; border:1px solid #50504b; border-radius:13px; width:min(94%,380px); max-height:100%; overflow:auto; padding:22px 25px 17px; box-shadow:7px 7px 0 #101011a8; text-align:center}
 .status {color:var(--mint); font:750 10px/1 ui-monospace,monospace; letter-spacing:.13em}
 .card h2 {font-weight:950; font-size:clamp(32px,5vw,53px); line-height:1; letter-spacing:-.08em; margin:7px 0 8px}
 .card p {font-size:14px; line-height:1.36; color:var(--muted); margin:0 auto 13px; max-width:265px}
@@ -62,6 +62,23 @@ aside {display:grid; gap:10px}
 .guide i {background:#32362b; color:var(--acid); display:grid; place-items:center; height:27px; border-radius:5px; font-size:17px; font-style:normal; font-weight:900}
 .guide li:nth-child(2) i {color:var(--mint)}
 .guide li:nth-child(3) i {color:var(--pink)}
+.guide li:nth-child(4) i {color:#ff9548}
+.board {list-style:none; margin:12px 0 0; padding:10px 0 0; border-top:1px solid var(--line); display:grid; gap:5px; counter-reset:rank}
+.board li {display:flex; justify-content:space-between; align-items:baseline; font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; counter-increment:rank}
+.board li::before {content:counter(rank); color:var(--muted); font:700 10px ui-monospace,monospace; width:16px}
+.board li span {flex:1}
+.board li small {color:var(--muted); font:700 10px ui-monospace,monospace}
+.board li.fresh span {color:var(--acid)}
+.board li.empty, .perks li.empty {color:var(--muted); font-weight:400; font-size:12px}
+.board li.empty::before {content:none}
+.perks ul {list-style:none; padding:0; margin:0; display:grid; gap:5px; font-size:12px; font-weight:700; white-space:pre-line}
+.choices {display:grid; gap:7px; margin:4px 0 2px}
+.card .choice {display:grid; grid-template-columns:32px 1fr auto; gap:10px; align-items:center; background:#25262a; color:var(--paper); border:1px solid #4b4b47; box-shadow:0 3px 0 #101011; padding:9px 11px; text-align:left; font-weight:400}
+.card .choice:hover, .card .choice:focus-visible {background:#2f3225; border-color:var(--acid)}
+.choice i {display:grid; place-items:center; height:32px; border-radius:6px; background:#32362b; color:var(--acid); font-style:normal; font-weight:900; font-size:18px}
+.choice b {display:block; font-size:14px; font-weight:900}
+.choice small {display:block; color:var(--muted); font-size:12px; line-height:1.25; margin-top:2px}
+.choice kbd {font:700 10px ui-monospace,monospace; color:var(--muted); border:1px solid #4b4b47; border-radius:4px; padding:2px 5px}
 @media(max-width:780px) {
   .shell {padding:0 15px 16px}
   .layout {grid-template-columns:minmax(0,1fr) 175px; gap:8px}
@@ -88,7 +105,12 @@ aside {display:grid; gap:10px}
   .card button {padding:7px 10px}
   aside {grid-template-columns:1fr 1fr; gap:7px}
   .guide {grid-column:1/-1}
-  .guide ul {grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px}
+  .guide ul {grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px}
+  .perks {grid-column:1/-1}
+  .card .choice {padding:6px 9px; grid-template-columns:26px 1fr}
+  .choice i {height:26px; font-size:15px}
+  .choice kbd {display:none}
+  .choice small {font-size:11px}
   .guide li {grid-template-columns:1fr; gap:3px}
   .guide i {display:none}
   #record {font-size:25px}
