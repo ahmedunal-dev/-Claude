@@ -8,12 +8,12 @@ Ein schnelles Ein-Finger-Arcade-Spiel im Neon-Look. Du steuerst ein Schiff durch
 | --- | --- |
 | **Steuerung** | Irgendwo auf dem Bildschirm ziehen. Das Schiff folgt relativ zum Finger, damit der Finger das Schiff nicht verdeckt. Am Desktop folgt es der Maus, alternativ Pfeiltasten/WASD. |
 | **Close Calls** | Knapp an einem Hindernis vorbeifliegen gibt Bonuspunkte, eine kurze Zeitlupe und lädt den Ring um das Schiff auf. |
-| **Overdrive** | Ist der Ring voll, bist du 5 Sekunden lang unverwundbar, fliegst schneller und zerschlägst alle Hindernisse. |
+| **Overdrive** | Ist der Ring voll, bist du 3,5 Sekunden lang unverwundbar, fliegst schneller und zerschlägst alle Hindernisse. Danach lädt sich der Ring 8 Sekunden lang nicht auf, und jeder weitere Overdrive braucht mehr Close Calls. |
 | **Shards & Multiplikator** | Goldene Shards hintereinander einsammeln erhöht den Multiplikator bis x10. Nach 2,3 Sekunden ohne Shard verfällt die Kette. |
 | **Hindernisse** | Blöcke (auch bewegliche), Wände mit Lücke (auch schwingende), rotierende Balken, springende Minen und Laser mit Vorwarnung, die auf deine Position zielen. Sie werden nach und nach freigeschaltet. |
 | **Power-ups** | Schild (fängt einen Treffer ab), Magnet (zieht Shards an), Zeitlupe. |
-| **Zonen** | Alle 30 Sekunden beginnt eine neue Zone mit eigener Farbe, die Musik wird intensiver und das Tempo steigt. |
-| **Meta-Loop** | Shards sind Währung: Damit kaufst du 6 Schiff-Skins oder eine Wiederbelebung (50 Shards, einmal pro Runde). Rekord und Shards werden gespeichert. |
+| **Zonen** | Alle 30 Sekunden beginnt eine neue Zone mit eigener Farbe, die Musik wird intensiver und das Tempo steigt. Ab etwa 75 Sekunden zieht das Tempo weiter an, Lücken werden enger und bis zu 3 Laser feuern gleichzeitig. Jede Runde endet irgendwann. |
+| **Meta-Loop** | Shards sind Währung: Damit kaufst du 6 Schiff-Skins (500 bis 15.000 Shards) oder eine Wiederbelebung (50 Shards, einmal pro Runde). Rekord und Shards werden gespeichert. |
 
 Sound und Musik werden komplett per Web Audio erzeugt, es gibt also keine Audiodateien. Haptisches Feedback nutzt auf iOS das Capacitor-Haptics-Plugin, im Browser `navigator.vibrate`.
 

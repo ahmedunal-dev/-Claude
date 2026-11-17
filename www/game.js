@@ -62,11 +62,11 @@
 
   const SKINS = [
     { name: 'Volt', cost: 0, c1: '#2ef2ff', c2: '#ff2e6a' },
-    { name: 'Ember', cost: 150, c1: '#ff9a3c', c2: '#ffd23f' },
-    { name: 'Toxin', cost: 300, c1: '#9dff3c', c2: '#2ef2ff' },
-    { name: 'Royal', cost: 600, c1: '#c08cff', c2: '#ff4fd8' },
-    { name: 'Ghost', cost: 1000, c1: '#ffffff', c2: '#8aa0ff' },
-    { name: 'Prism', cost: 2000, c1: null, c2: null },
+    { name: 'Ember', cost: 500, c1: '#ff9a3c', c2: '#ffd23f' },
+    { name: 'Toxin', cost: 1500, c1: '#9dff3c', c2: '#2ef2ff' },
+    { name: 'Royal', cost: 3500, c1: '#c08cff', c2: '#ff4fd8' },
+    { name: 'Ghost', cost: 7500, c1: '#ffffff', c2: '#8aa0ff' },
+    { name: 'Prism', cost: 15000, c1: null, c2: null },
   ];
   function skinColors(i, t) {
     const s = SKINS[i] || SKINS[0];
@@ -270,7 +270,7 @@
     g = {
       t: 0, score: 0, speed: 0, cursor: 0, need: H * 0.25,
       shards: 0, banked: 0, combo: 0, comboT: 0, mult: 1,
-      meter: 0, overdrive: 0, shield: false, magnet: 0, slow: 0, invuln: 0.6,
+      meter: 0, overdrive: 0, odCount: 0, odCool: 0, shield: false, magnet: 0, slow: 0, invuln: 0.6,
       near: 0, revived: false, zone: 0, lastLaser: -99, lastPower: 0,
       tutorial: save.games < 3 ? 3.2 : 0, dying: 0, banner: null,
     };
@@ -280,7 +280,15 @@
     zoneIdx = 0; zoneFrom = 0; zoneBlend = 1;
   }
 
-  const diff = () => 1 - Math.exp(-g.t / 70);
+  const diff = () => 1 - Math.exp(-g.t / 55);
+  // keeps ramping after diff() saturates, so long runs always end
+  const late = () => clamp((g.t - 75) / 150, 0, 1);
+  const OD_TIME = 3.5, OD_COOL = 8;
+  function addMeter(v) {
+    if (g.overdrive > 0 || g.odCool > 0) return;
+    g.meter = Math.min(1, g.meter + v / (1 + 0.6 * g.odCount));
+    if (g.meter >= 1) startOverdrive();
+  }
 
   // ---------- spawning ----------
   function weighted(list) {
@@ -303,7 +311,7 @@
     if (g.t > 3) opts.push(['wall', 0.9]);
     if (g.t > 10) opts.push(['spinner', 0.75]);
     if (g.t > 18) opts.push(['mines', 0.6]);
-    if (g.t > 26 && g.t - g.lastLaser > 7) opts.push(['laser', 0.55]);
+    if (g.t > 22 && g.t - g.lastLaser > 5) opts.push(['laser', 0.6 + late() * 0.4]);
     const kind = weighted(opts);
     const top = -12 * U;
     let extent = 0, lane = null;
@@ -330,7 +338,7 @@
       lane = placed.mid;
     } else if (kind === 'wall') {
       const h = 22 * U;
-      const gapW = lerp(140, 88, d) * U;
+      const gapW = (lerp(132, 84, d) - 12 * late()) * U;
       const gx = rand(gapW / 2 + 12 * U, W - gapW / 2 - 12 * U);
       const moving = d > 0.3 && Math.random() < 0.45;
       const osc = moving ? { amp: rand(30, 70) * U, f: rand(1.4, 2.6), ph: Math.random() * TAU } : null;
@@ -373,7 +381,7 @@
       extent = 112 * U;
     } else if (kind === 'laser') {
       g.lastLaser = g.t;
-      const count = d > 0.55 && Math.random() < 0.5 ? 2 : 1;
+      const count = late() > 0.4 && Math.random() < 0.35 ? 3 : d > 0.45 && Math.random() < 0.5 ? 2 : 1;
       const xs = [];
       for (let i = 0; i < count; i++) {
         let x = i === 0 ? clamp(P.x, 30 * U, W - 30 * U) : rand(30 * U, W - 30 * U);
@@ -389,14 +397,14 @@
       g.need = g.speed * 0.55; // keep the lane clear while the beam is up
     }
 
-    const gap = lerp(270, 150, d) * U;
+    const gap = lerp(250, 135, d) * (1 - 0.25 * late()) * U;
     if (kind !== 'laser') g.need = extent + gap;
     g.cursor = 0;
 
     // reward in the space before the next pattern
     const midY = top - extent - gap / 2;
     if (kind !== 'laser') {
-      if (g.t > 8 && g.t - g.lastPower > 14 && Math.random() < 0.18) {
+      if (g.t > 8 && g.t - g.lastPower > 20 && Math.random() < 0.12) {
         g.lastPower = g.t;
         powerups.push({ x: clamp(lane ?? rand(40 * U, W - 40 * U), 40 * U, W - 40 * U), y: midY, kind: pick(['shield', 'magnet', 'slow']), t: 0 });
       } else if (Math.random() < 0.7) {
@@ -502,18 +510,18 @@
     g.near++;
     const pts = 25 * g.mult;
     g.score += pts;
-    g.meter = Math.min(1, g.meter + 0.14);
+    addMeter(0.1);
     tsDip = 0.09;
     const words = ['CLOSE!', 'NEAR MISS', 'WHOA', 'SKIM!', 'RAZOR'];
     floatText(P.x, P.y - 34 * U, pick(words) + ' +' + pts, COL.ink, 17);
     burst(P.x, P.y, 10, skinColors(save.skin, clock)[0], 260, 2.2, 0.4);
     Sound.near();
     haptic('light');
-    if (g.meter >= 1) startOverdrive();
   }
 
   function startOverdrive() {
-    g.overdrive = 5;
+    g.overdrive = OD_TIME;
+    g.odCount++;
     g.meter = 0;
     flash = 0.6; flashColor = '#ffffff';
     banner('OVERDRIVE', '#ffffff', 'smash everything');
@@ -530,10 +538,9 @@
     if (m > g.mult) { Sound.mult(); floatText(P.x, P.y - 52 * U, 'x' + m, COL.shard, 24); }
     g.mult = m;
     g.score += 10 * g.mult;
-    g.meter = Math.min(1, g.meter + 0.03);
+    addMeter(0.012);
     burst(s.x, s.y, 7, COL.shard, 200, 2.4, 0.35);
     Sound.shard(g.combo);
-    if (g.meter >= 1 && g.overdrive <= 0) startOverdrive();
   }
 
   function collectPower(p) {
@@ -608,7 +615,7 @@
     const d = diff();
     if (playing) {
       g.t += dt;
-      g.speed = U * (360 + 440 * d) * (g.overdrive > 0 ? 1.4 : 1);
+      g.speed = U * (380 + 500 * d + 380 * late()) * (g.overdrive > 0 ? 1.4 : 1);
     }
     const scroll = g.speed * dt;
     bgScroll += scroll;
@@ -620,7 +627,8 @@
       g.magnet = Math.max(0, g.magnet - rdt);
       g.slow = Math.max(0, g.slow - rdt);
       g.tutorial = Math.max(0, g.tutorial - rdt);
-      if (g.overdrive > 0) { g.overdrive -= rdt; if (g.overdrive <= 0) { g.invuln = 0.8; floatText(P.x, P.y - 40 * U, 'OVERDRIVE OVER', COL.dim, 14); } }
+      g.odCool = Math.max(0, g.odCool - rdt);
+      if (g.overdrive > 0) { g.overdrive -= rdt; if (g.overdrive <= 0) { g.invuln = 0.5; g.odCool = OD_COOL; floatText(P.x, P.y - 40 * U, 'OVERDRIVE OVER', COL.dim, 14); } }
       if (g.comboT > 0) { g.comboT -= dt; if (g.comboT <= 0) { g.combo = 0; g.mult = 1; } }
       if (g.banner) { g.banner.t += rdt; if (g.banner.t > 1.6) g.banner = null; }
 
@@ -690,7 +698,7 @@
       }
       if (!playing) continue;
 
-      const dd = distTo(o, P.x, P.y, P.r * 0.78);
+      const dd = distTo(o, P.x, P.y, P.r * 0.84);
       if (dd < 0) {
         if (g.overdrive > 0) { smash(o); continue; }
         if (g.invuln > 0) continue;
@@ -1048,7 +1056,11 @@
     ctx.lineWidth = 3 * U;
     ctx.strokeStyle = 'rgba(243,236,255,0.12)';
     ctx.beginPath(); ctx.arc(P.x, P.y, R, 0, TAU); ctx.stroke();
-    const v = g.overdrive > 0 ? g.overdrive / 5 : g.meter;
+    if (g.odCool > 0 && g.overdrive <= 0) {
+      ctx.strokeStyle = 'rgba(243,236,255,0.22)';
+      ctx.beginPath(); ctx.arc(P.x, P.y, R, -Math.PI / 2, -Math.PI / 2 + (1 - g.odCool / OD_COOL) * TAU); ctx.stroke();
+    }
+    const v = g.overdrive > 0 ? g.overdrive / OD_TIME : g.meter;
     if (v > 0) {
       ctx.strokeStyle = g.overdrive > 0 ? '#ffffff' : rgba(c1, 0.55 + 0.45 * g.meter);
       ctx.beginPath(); ctx.arc(P.x, P.y, R, -Math.PI / 2, -Math.PI / 2 + v * TAU); ctx.stroke();
