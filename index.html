@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#161619">
+<meta name="description" content="Tek dokunuşla atıl, mermileri geri sektir ve arenada hayatta kal.">
+<title>Kıvılcım Arena</title>
+<link rel="stylesheet" href="./arena.css">
+<script type="module" src="./arena.mjs"></script>
+</head>
+<body>
+<div class="shell">
+<header>
+  <div class="brand"><span aria-hidden="true">ϟ</span> KIVILCIM<span class="brand-dot">.</span></div>
+  <div class="toolbar">
+    <button id="sound" aria-pressed="true" title="Sesi aç veya kapat">Ses açık</button>
+    <button id="pause" disabled title="Duraklat (P)">Duraklat</button>
+  </div>
+</header>
+<main>
+  <div class="intro"><h1>KIVILCIM<span> ARENA</span></h1><p>Atıl. Zincirle. Hayatta kal.</p></div>
+  <div class="layout">
+    <div class="game">
+      <div class="hud">
+        <div><small>SKOR</small><strong id="score">0</strong></div>
+        <div class="wave"><small>DALGA</small><strong id="wave">01</strong></div>
+        <div class="health"><small>CAN</small><strong id="health" aria-label="3 can">♥ ♥ ♥</strong></div>
+      </div>
+      <div class="stage" id="stage" tabindex="0" role="region" aria-label="Oyun alanı">
+        <canvas id="canvas" width="720" height="500" aria-hidden="true"></canvas>
+        <div id="announce" class="announce" hidden></div>
+        <div class="overlay" id="overlay">
+          <div class="card">
+            <span class="status" id="status">TEK OYUNCULU</span>
+            <h2 id="title">Arenaya gir.</h2>
+            <p id="copy">Hedefe dokun veya tıkla. Düşmanları parçala, mermileri geri sektir.</p>
+            <button id="play">Oyna <span aria-hidden="true">→</span></button>
+            <div id="shortcut">Bilgisayarda yön tuşları veya WASD de çalışır.</div>
+          </div>
+        </div>
+      </div>
+      <div class="dash-line"><span>ATILMA</span><div class="meter"><div id="dash"></div></div><strong id="dashState">HAZIR</strong></div>
+    </div>
+    <aside>
+      <section class="panel record">
+        <h2>KİŞİSEL REKOR</h2>
+        <div id="record">0</div>
+        <p>En iyi dalga <strong id="recordWave">–</strong></p>
+      </section>
+      <section class="panel chain">
+        <h2>KOMBO</h2>
+        <strong id="combo">×1</strong>
+        <div class="meter"><div id="comboMeter"></div></div>
+        <p>Vuruşları peş peşe yap.</p>
+      </section>
+      <section class="panel guide">
+        <h2>NASIL OYNANIR?</h2>
+        <ul>
+          <li><i aria-hidden="true">→</i><span><b>Atıl</b>Hedefe dokun veya tıkla.</span></li>
+          <li><i aria-hidden="true">↶</i><span><b>Geri sektir</b>Merminin içinden atıl.</span></li>
+          <li><i aria-hidden="true">×</i><span><b>Kombo yap</b>Art arda vurarak skoru katla.</span></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+</main>
+</div>
+</body>
+</html>
