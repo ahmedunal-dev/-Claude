@@ -10,7 +10,7 @@ button {font:inherit; cursor:pointer}
 button:disabled {opacity:.45; cursor:default}
 button:focus-visible,.stage:focus-visible {outline:2px solid var(--acid); outline-offset:4px}
 [hidden] {display:none!important}
-.shell {max-width:1230px; padding:0 34px 25px; margin:auto}
+.shell {max-width:1230px; padding-block:0 25px; padding-left:max(34px, env(safe-area-inset-left, 0px)); padding-right:max(34px, env(safe-area-inset-right, 0px)); margin:auto}
 header {height:70px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center}
 .brand {font-size:19px; font-weight:950; letter-spacing:-.065em; white-space:nowrap}
 .brand span:first-child {color:var(--ink); background:var(--acid); display:inline-grid; place-items:center; width:31px; height:31px; font-size:24px; margin-right:8px; vertical-align:middle; border-radius:6px}
@@ -80,13 +80,13 @@ aside {display:grid; gap:10px}
 .choice small {display:block; color:var(--muted); font-size:12px; line-height:1.25; margin-top:2px}
 .choice kbd {font:700 10px ui-monospace,monospace; color:var(--muted); border:1px solid #4b4b47; border-radius:4px; padding:2px 5px}
 @media(max-width:780px) {
-  .shell {padding:0 15px 16px}
+  .shell {padding-block:0 16px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
   .layout {grid-template-columns:minmax(0,1fr) 175px; gap:8px}
   .intro {padding-top:21px}
   .panel {padding:11px}
 }
 @media(max-width:630px) {
-  .shell {padding:0 9px 10px}
+  .shell {padding-block:0 10px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px))}
   header {height:50px}
   .brand {font-size:15px}
   .brand span:first-child {width:24px; height:24px; font-size:19px; margin-right:6px}
