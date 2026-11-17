@@ -27,6 +27,21 @@
     { bg: '#10101e', grid: '#5a5a9a' },
   ];
 
+  // Ten hand-tuned levels. d = obstacle difficulty from start to end of the level,
+  // haz/foes = spawn weights, boss = 0 Warden / 1 Hydra / 2 Rift Core, tier = boss strength.
+  const LEVELS = [
+    { name: 'First Light', zone: 0, len: 30, d: [0, 0.25], haz: { blocks: 1, wall: 0.5 }, foes: { drone: 1 }, foeEvery: 3.2, boss: 0, tier: 0 },
+    { name: 'Static Field', zone: 1, len: 32, d: [0.1, 0.35], haz: { blocks: 1, wall: 0.8, spinner: 0.6 }, foes: { drone: 1, diver: 0.4 }, foeEvery: 3, boss: 0, tier: 1 },
+    { name: 'Mine Run', zone: 3, len: 34, d: [0.2, 0.45], haz: { blocks: 0.7, wall: 0.6, spinner: 0.4, mines: 1 }, foes: { drone: 1, diver: 0.5, gunner: 0.25 }, foeEvery: 2.8, boss: 1, tier: 0 },
+    { name: 'Crossfire', zone: 2, len: 36, d: [0.3, 0.55], haz: { blocks: 0.8, wall: 0.8, spinner: 0.5, mines: 0.4, laser: 0.7 }, laserGap: 5, foes: { drone: 1, diver: 0.5, gunner: 0.5 }, foeEvery: 2.6, boss: 1, tier: 1 },
+    { name: 'Deep Rift', zone: 5, len: 38, d: [0.4, 0.65], haz: { blocks: 0.9, wall: 0.8, spinner: 0.7, mines: 0.6, laser: 0.5 }, foes: { drone: 1, diver: 0.6, gunner: 0.5 }, foeEvery: 2.4, boss: 2, tier: 0 },
+    { name: 'Swarm', zone: 4, len: 36, d: [0.35, 0.55], gapMul: 1.45, haz: { blocks: 1, wall: 0.4, mines: 0.3 }, foes: { drone: 1.3, diver: 0.9, gunner: 0.7 }, foeEvery: 1.3, boss: 0, tier: 3 },
+    { name: 'Laser Grid', zone: 1, len: 38, d: [0.5, 0.7], haz: { blocks: 0.4, wall: 1, spinner: 0.4, laser: 1.2 }, laserGap: 3, foes: { drone: 1, gunner: 0.6 }, foeEvery: 2.5, boss: 1, tier: 3 },
+    { name: 'Pressure', zone: 3, len: 40, d: [0.6, 0.8], late: 0.25, haz: { blocks: 1, wall: 0.9, spinner: 0.8, mines: 0.6, laser: 0.6 }, foes: { drone: 1, diver: 0.7, gunner: 0.6 }, foeEvery: 2.1, boss: 2, tier: 2 },
+    { name: 'Gauntlet', zone: 2, len: 42, d: [0.7, 0.9], late: 0.4, haz: { blocks: 1, wall: 1, spinner: 0.9, mines: 0.8, laser: 0.8 }, laserGap: 4, foes: { drone: 1, diver: 0.8, gunner: 0.8 }, foeEvery: 1.8, boss: 1, tier: 5 },
+    { name: 'Rift Heart', zone: 0, len: 45, d: [0.8, 1], late: 0.55, haz: { blocks: 1, wall: 1, spinner: 1, mines: 0.8, laser: 0.9 }, laserGap: 4, foes: { drone: 1, diver: 0.9, gunner: 0.9 }, foeEvery: 1.7, boss: 2, tier: 5, bossName: 'Rift Heart' },
+  ];
+
   // ---------- colour helpers ----------
   const rgbCache = new Map();
   function hexRgb(hex) {
@@ -57,7 +72,7 @@
     get(k, d) { try { const v = localStorage.getItem('riftrunner_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('riftrunner_' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
   };
-  const save = Object.assign({ best: 0, coins: 0, owned: [0], skin: 0, muted: false, games: 0 }, store.get('save', {}));
+  const save = Object.assign({ best: 0, coins: 0, owned: [0], skin: 0, muted: false, games: 0, unlocked: 1, lv: {} }, store.get('save', {}));
   const persist = () => store.set('save', save);
 
   const SKINS = [
@@ -284,27 +299,30 @@
     for (let i = 0; i < n; i++) stars.push({ x: Math.random() * W, y: Math.random() * H, z: rand(0.15, 1) });
   }
 
-  function newRun() {
+  function newRun(n) {
+    const lv = LEVELS[n - 1];
     g = {
       t: 0, score: 0, speed: 0, cursor: 0, need: H * 0.25,
       shards: 0, banked: 0, combo: 0, comboT: 0, mult: 1,
       meter: 0, overdrive: 0, odCount: 0, odCool: 0, shield: false, magnet: 0, slow: 0, invuln: 0.6,
       near: 0, revived: false, zone: 0, lastLaser: -99, lastPower: 0,
-      tutorial: save.games < 3 ? 4 : 0, dying: 0, banner: null,
-      level: 1, phase: 'run', phaseT: 0, runLen: 30, rt: 0,
-      enemyT: 3, dropT: 8.01, weapon: { kind: 'blaster', tier: 1 }, fireT: 0, beam: null,
-      kills: 0, bosses: 0,
+      tutorial: n === 1 && save.games < 3 ? 4 : 0, dying: 0, banner: null,
+      level: n, phase: 'run', phaseT: 0, runLen: lv.len, rt: 0,
+      enemyT: 2.5, dropT: 6.01, fireT: 0, homT: 0, beam: null,
+      ups: { spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 },
+      kills: 0, bosses: 0, runSpawned: 0, runKills: 0,
     };
     resetCombat();
     obstacles.length = shards.length = powerups.length = particles.length = texts.length = 0;
     P.r = 13 * U;
     P.x = P.tx = W / 2; P.y = P.ty = H * 0.78; P.trail.length = 0; P.vx = 0;
-    zoneIdx = 0; zoneFrom = 0; zoneBlend = 1;
+    zoneFrom = zoneIdx; zoneIdx = lv.zone; zoneBlend = 0;
   }
 
-  const diff = () => 1 - Math.exp(-g.rt / 65);
-  // keeps ramping after diff() saturates, so long runs always end
-  const late = () => clamp((g.rt - 75) / 150, 0, 1);
+  const LV = () => LEVELS[g.level - 1];
+  // difficulty rises inside a level from d[0] to d[1]; later levels start higher
+  const diff = () => { const lv = LV(); return lerp(lv.d[0], lv.d[1], clamp(g.rt / lv.len, 0, 1)); };
+  const late = () => LV().late || 0;
   const OD_TIME = 3.5, OD_COOL = 8;
   function addMeter(v) {
     if (g.overdrive > 0 || g.odCool > 0) return;
@@ -329,11 +347,10 @@
 
   function spawnPattern() {
     const d = diff();
-    const opts = [['blocks', 1.0]];
-    if (g.rt > 4) opts.push(['wall', 0.9]);
-    if (g.rt > 12) opts.push(['spinner', 0.75]);
-    if (g.rt > 24) opts.push(['mines', 0.6]);
-    if (g.rt > 34 && g.t - g.lastLaser > 5) opts.push(['laser', 0.6 + late() * 0.4]);
+    const lv = LV(), opts = [];
+    for (const k of ['blocks', 'wall', 'spinner', 'mines']) if (lv.haz[k]) opts.push([k, lv.haz[k]]);
+    if (lv.haz.laser && g.t - g.lastLaser > (lv.laserGap || 5)) opts.push(['laser', lv.haz.laser]);
+    if (!opts.length) opts.push(['blocks', 1]);
     const kind = weighted(opts);
     const top = -12 * U;
     let extent = 0, lane = null;
@@ -419,7 +436,7 @@
       g.need = g.speed * 0.55; // keep the lane clear while the beam is up
     }
 
-    const gap = lerp(250, 135, d) * (1 - 0.25 * late()) * 1.1 * U;
+    const gap = lerp(250, 135, d) * (1 - 0.25 * late()) * 1.1 * (lv.gapMul || 1) * U;
     if (kind !== 'laser') g.need = extent + gap;
     g.cursor = 0;
 
@@ -596,25 +613,24 @@
   // =====================================================================
   // ---------- combat: weapons, enemies, weapon drops, bosses ----------
   // =====================================================================
-  // Each level: dodge obstacles and shoot enemies for levelLen() seconds,
-  // then one boss. Bosses rotate Warden -> Hydra -> Rift Core and every
-  // level makes them tougher, so level 1 is gentle and it ramps from there.
-  // Enemies drop one of five weapons, each with its own colour and icon.
+  // Each level: dodge obstacles and shoot enemies, then one boss.
+  // Enemies drop upgrades. There is one gun; each of the five upgrade types
+  // improves it in its own way and stacks up to UP_MAX within the level.
   const enemies = [], ebullets = [], pbullets = [], drops = [];
   let boss = null;
-  const levelLen = () => 30 + Math.min(g.level - 1, 5) * 3;
 
-  const WEAPONS = {
-    blaster: { name: 'Blaster', color: null },
+  const UPGRADES = {
     // cool, clearly separated hues so drops never read as warm-coloured hazards
-    spread: { name: 'Spread', color: '#ffe14d' },
-    rapid: { name: 'Rapid', color: '#2ef2ff' },
-    homing: { name: 'Homing', color: '#5b8cff' },
-    beam: { name: 'Beam', color: '#c08cff' },
-    plasma: { name: 'Plasma', color: '#7dff5a' },
+    spread: { name: 'Spread', color: '#ffe14d', what: '+1 shot' },
+    rapid: { name: 'Rapid', color: '#2ef2ff', what: 'faster fire' },
+    homing: { name: 'Homing', color: '#5b8cff', what: 'missiles' },
+    beam: { name: 'Beam', color: '#c08cff', what: 'laser beam' },
+    plasma: { name: 'Plasma', color: '#7dff5a', what: 'more damage' },
   };
+  const UP_MAX = 5;
   const DROP_POOL = ['spread', 'rapid', 'homing', 'beam', 'plasma'];
-  const DROP_CHANCE = { drone: 0.12, diver: 0.25, gunner: 0.7 };
+  const DROP_CHANCE = { drone: 0.2, diver: 0.35, gunner: 0.8 };
+  const gunLevel = () => 1 + DROP_POOL.reduce((a, k) => a + g.ups[k], 0);
 
   const ENEMY = {
     drone: { color: '#ff5a5a', hp: 2, r: 14, pts: 30 },
@@ -623,9 +639,9 @@
   };
 
   const BOSSES = [
-    { name: 'Warden', hp: 55, r: 44, color: '#ff9a3c' },
-    { name: 'Hydra', hp: 95, r: 46, color: '#ff4fd8' },
-    { name: 'Rift Core', hp: 140, r: 50, color: '#ff2e6a' },
+    { name: 'Warden', hp: 90, r: 44, color: '#ff9a3c' },
+    { name: 'Hydra', hp: 160, r: 46, color: '#ff4fd8' },
+    { name: 'Rift Core', hp: 240, r: 50, color: '#ff2e6a' },
   ];
 
   function resetCombat() {
@@ -659,39 +675,42 @@
     return best;
   }
 
+  // One gun, shaped by the upgrades collected this level.
   function fireWeapon(rdt, list, c1) {
-    const w = g.weapon, t = w.tier;
-    const od = g.overdrive > 0 ? 1.6 : 1;
-    if (w.kind === 'beam') {
-      const bw = (5 + 3 * t) * U;
+    const u = g.ups, od = g.overdrive > 0 ? 1.6 : 1;
+    // Beam: a continuous laser on top of the gun, wider and hotter per level
+    if (u.beam > 0) {
+      const bw = (3 + 2 * u.beam) * U;
       let hit = null;
       for (const e of list) if (Math.abs(e.x - P.x) < e.r + bw / 2 && e.y < P.y && (!hit || e.y > hit.y)) hit = e;
       g.beam = { w: bw, y: hit ? hit.y + hit.r * 0.4 : -20 * U };
-      if (hit) damage(hit, (8 + 4 * t) * od * rdt, P.x, hit.y + hit.r * 0.5, true);
+      if (hit) damage(hit, (2 + 2.5 * u.beam) * od * rdt, P.x, hit.y + hit.r * 0.5, true);
       Sound.beam();
-      return;
+    } else g.beam = null;
+    // Homing: missile salvos, more missiles and shorter reload per level
+    if (u.homing > 0) {
+      g.homT -= rdt;
+      if (g.homT <= 0) {
+        g.homT = 1.25 - 0.13 * u.homing;
+        const n = [0, 1, 2, 2, 3, 4][u.homing];
+        for (let i = 0; i < n; i++) {
+          const k = i - (n - 1) / 2;
+          pbullets.push({ x: P.x + k * 14 * U, y: P.y, vx: (k || (i % 2 ? 1 : -1) * 0.5) * 320 * U, vy: -380 * U, dmg: 2 * od, r: 5 * U, kind: 'missile', color: UPGRADES.homing.color, life: 2.4 });
+        }
+      }
     }
-    g.beam = null;
+    // Main gun: Spread adds shots, Rapid shortens the reload, Plasma adds damage and size
     g.fireT -= rdt;
     if (g.fireT > 0) return;
-    const nose = P.y - P.r * 1.2, S = 940 * U;
-    const shot = (x, ang, sp, dmg, extra) => pbullets.push(Object.assign({
-      x, y: nose, vx: Math.sin(ang) * sp, vy: -Math.cos(ang) * sp, dmg: dmg * od, r: 4 * U, kind: 'bolt', color: c1,
-    }, extra));
-    switch (w.kind) {
-      case 'blaster': shot(P.x, 0, S, 1); g.fireT = 0.2; break;
-      case 'spread': {
-        const n = 1 + 2 * t;
-        for (let i = 0; i < n; i++) shot(P.x, (i - (n - 1) / 2) * 0.12, S, 1, { color: WEAPONS.spread.color });
-        g.fireT = 0.25; break;
-      }
-      case 'rapid': shot(P.x + rand(-6, 6) * U, rand(-0.05, 0.05), S * 1.1, 0.8, { color: WEAPONS.rapid.color, r: 3 * U }); g.fireT = 1 / (8 + 3 * t); break;
-      case 'homing': {
-        const n = 1 + t;
-        for (let i = 0; i < n; i++) shot(P.x, (i - (n - 1) / 2) * 0.9, 460 * U, 2, { kind: 'missile', color: WEAPONS.homing.color, r: 5 * U, life: 2.4 });
-        g.fireT = 0.42; break;
-      }
-      case 'plasma': shot(P.x, 0, S * 0.6, 6, { kind: 'plasma', color: WEAPONS.plasma.color, r: (8 + 2 * t) * U, pierce: new Set() }); g.fireT = 1 / (1.4 + 0.4 * t); break;
+    g.fireT = 0.18 / (1 + 0.24 * u.rapid);
+    const n = 1 + u.spread, dmg = (1 + 0.3 * u.plasma) * od, heavy = u.plasma >= 3;
+    const r = (4 + u.plasma * 0.9) * U, nose = P.y - P.r * 1.2, S = 940 * U;
+    for (let i = 0; i < n; i++) {
+      const a = (i - (n - 1) / 2) * 0.11;
+      pbullets.push({
+        x: P.x, y: nose, vx: Math.sin(a) * S, vy: -Math.cos(a) * S, dmg, r,
+        kind: heavy ? 'plasma' : 'bolt', color: heavy ? UPGRADES.plasma.color : c1, pierce: heavy ? new Set() : null,
+      });
     }
     Sound.shoot();
   }
@@ -731,17 +750,23 @@
     else if (t.hp <= 0 && !t.dead) killEnemy(t, true);
   }
 
-  function dropWeapon(x, y) {
+  function dropUpgrade(x, y) {
     g.dropT = 0;
-    drops.push({ x: clamp(x, 30 * U, W - 30 * U), y, kind: pick(DROP_POOL), t: 0 });
+    const open = DROP_POOL.filter((k) => g.ups[k] < UP_MAX);
+    drops.push({ x: clamp(x, 30 * U, W - 30 * U), y, kind: pick(open.length ? open : DROP_POOL), t: 0 });
   }
 
-  function pickUpWeapon(d) {
-    const cur = g.weapon;
-    if (d.kind === cur.kind) cur.tier = Math.min(3, cur.tier + 1);
-    else g.weapon = { kind: d.kind, tier: 1 };
-    const w = g.weapon, def = WEAPONS[w.kind];
-    floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + (w.tier > 1 ? ' LV' + w.tier : '') + '!', def.color, 24);
+  function pickUpgrade(d) {
+    const def = UPGRADES[d.kind];
+    if (g.ups[d.kind] < UP_MAX) {
+      g.ups[d.kind]++;
+      floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' ' + g.ups[d.kind] + '/' + UP_MAX, def.color, 22);
+      floatText(d.x, d.y - 8 * U, def.what, COL.ink, 13);
+    } else {
+      const pts = 250 * g.mult;
+      g.score += pts;
+      floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' MAX +' + pts, def.color, 20);
+    }
     burst(d.x, d.y, 30, def.color, 360, 3, 0.7);
     flash = 0.3; flashColor = def.color;
     Sound.pickup();
@@ -750,19 +775,20 @@
 
   // ---- enemies ----
   function spawnEnemy() {
-    const L = g.level;
-    const hpMul = 1 + 0.35 * (L - 1);
-    const opts = [['drone', 1]];
-    if (L >= 2 || g.phaseT > 16) opts.push(['diver', 0.6]);
-    if (L >= 3 || (L === 2 && g.phaseT > 10)) opts.push(['gunner', 0.5]);
-    const kind = weighted(opts), def = ENEMY[kind];
-    const base = { kind, r: def.r * U, hp: def.hp * hpMul, max: def.hp * hpMul, t: 0, flash: 0, color: def.color };
+    const L = g.level, lv = LV();
+    const hpMul = 1 + 0.12 * (L - 1);
+    const kind = weighted(Object.entries(lv.foes)), def = ENEMY[kind];
+    const base = { kind, r: def.r * U, hp: def.hp * hpMul, max: def.hp * hpMul, t: 0, flash: 0, color: def.color, run: true };
     if (kind === 'drone') {
       const n = Math.random() < 0.5 ? 3 : 1, cx = rand(W * 0.2, W * 0.8), amp = rand(30, 70) * U, f = rand(1.6, 2.6);
       for (let i = 0; i < n; i++) enemies.push(Object.assign({}, base, { x: cx, cx, amp, f, y: -20 * U - i * 44 * U, t: i * 0.45 }));
+      g.runSpawned += n;
+      return;
     } else if (kind === 'diver') {
       enemies.push(Object.assign(base, { x: rand(W * 0.15, W * 0.85), y: -20 * U, state: 'enter', ty: rand(0.1, 0.24) * H, ang: Math.PI / 2 }));
+      g.runSpawned++;
     } else {
+      g.runSpawned++;
       enemies.push(Object.assign(base, { x: rand(W * 0.2, W * 0.8), y: -26 * U, state: 'enter', ty: rand(0.1, 0.2) * H, shotT: 1.1, vx: rand(40, 80) * U * sign() }));
     }
   }
@@ -776,13 +802,14 @@
     const pts = ENEMY[e.kind].pts * g.mult;
     g.score += pts;
     g.kills++;
+    if (e.run) g.runKills++;
     floatText(e.x, e.y - 16 * U, '+' + pts, e.color, 15);
     addMeter(0.02);
     addShake(3);
     const n = e.kind === 'gunner' ? 3 : e.kind === 'diver' ? 2 : 1;
     for (let i = 0; i < n; i++) addShard(e.x + rand(-14, 14) * U, e.y + rand(-10, 10) * U);
     // drops only before the boss; a dry spell guarantees the next one
-    if (g.phase === 'run' && (Math.random() < DROP_CHANCE[e.kind] || g.dropT > 8)) dropWeapon(e.x, e.y);
+    if (g.phase === 'run' && (Math.random() < DROP_CHANCE[e.kind] || g.dropT > 6)) dropUpgrade(e.x, e.y);
   }
 
   function eshot(x, y, ang, speed, o = {}) {
@@ -823,7 +850,7 @@
           e.shotT -= dt;
           if (e.shotT <= 0 && playing) {
             e.shotT = lerp(1.5, 0.9, d) / (1 + 0.15 * (g.level - 1));
-            const a = aimAt(e.x, e.y), n = g.level >= 3 ? 3 : 1;
+            const a = aimAt(e.x, e.y), n = g.level >= 5 ? 3 : 1;
             for (let i = 0; i < n; i++) eshot(e.x, e.y + e.r * 0.6, a + (i - (n - 1) / 2) * 0.22, (250 + 60 * d) * U);
             Sound.eshot();
           }
@@ -870,20 +897,20 @@
 
   // ---- bosses ----
   function spawnBoss() {
-    const L = g.level, idx = (L - 1) % 3, def = BOSSES[idx];
-    const hp = def.hp * (1 + 0.35 * (L - 1));
+    const L = g.level, lv = LV(), idx = lv.boss, tier = lv.tier, def = BOSSES[idx];
+    const hp = def.hp * (1 + 0.35 * tier);
     const dr = def.r * U;
     // hover just below the HUD so the health bar never covers the boss
     const hudBottom = ui.hud.getBoundingClientRect().bottom || H * 0.15;
     boss = {
-      isBoss: true, idx, name: def.name, color: def.color,
+      isBoss: true, idx, tier, name: lv.bossName || def.name, color: def.color,
       x: W / 2, y: -140 * U, ty: Math.max(H * 0.24, hudBottom + dr * 1.1 + 18 * U),
       dr, r: idx < 2 ? dr * 1.3 : dr, hp, max: hp,
       t: 0, entering: true, vulnerable: false, flash: 0, atk: 1.4, step: 0, spiral: null, phase: 1, dying: 0,
       // level 1 bullets are slower and attacks less frequent
-      spd: 0.85 + 0.07 * (L - 1), rate: 0.8 + 0.1 * (L - 1),
+      spd: 0.85 + 0.07 * tier, rate: 0.8 + 0.1 * tier,
     };
-    banner(def.name.toUpperCase(), def.color, 'level ' + L + ' boss');
+    banner(boss.name.toUpperCase(), def.color, 'level ' + L + ' boss');
     Sound.bossIn();
   }
 
@@ -899,7 +926,7 @@
   }
 
   function bossAttack(b) {
-    const s = b.spd * U, step = b.step++, k = g.level - 1;
+    const s = b.spd * U, step = b.step++, k = b.tier;
     const fan = (n, spread, speed) => { const a = aimAt(b.x, b.y); for (let i = 0; i < n; i++) eshot(b.x, b.y + b.r * 0.5, a + (i - (n - 1) / 2) * spread, speed * s, { color: b.color }); Sound.eshot(); };
     const ring = (n, speed, off) => { for (let i = 0; i < n; i++) eshot(b.x, b.y, off + (i * TAU) / n, speed * s, { color: '#ffffff', r: 6 }); Sound.eshot(); };
     const spiral = (arms, dur, rot, speed, int) => { b.spiral = { arms, t: dur, rot, speed: speed * s, int, acc: 0, ang: Math.random() * TAU }; };
@@ -1031,7 +1058,7 @@
     ebullets.length = 0;
     for (const o of obstacles) if (o.type === 'laser') o.dead = true;
     for (const e of enemies) if (!e.dead) killEnemy(e, false);
-    const bonus = 1000 * g.level;
+    const bonus = 1000 + 500 * (g.level - 1);
     g.score += bonus;
     g.bosses++;
     floatText(b.x, b.y + b.r + 30 * U, '+' + bonus.toLocaleString('en-US'), COL.shard, 28);
@@ -1043,20 +1070,6 @@
     haptic('heavy');
   }
 
-  function nextLevel() {
-    if (g.weapon.kind !== 'blaster') floatText(P.x, P.y - 46 * U, 'WEAPON RESET', COL.dim, 15);
-    g.weapon = { kind: 'blaster', tier: 1 };
-    g.beam = null;
-    g.level++;
-    zoneFrom = zoneIdx; zoneIdx = (g.level - 1) % ZONES.length; zoneBlend = 0;
-    banner('LEVEL ' + g.level, mixHex(ZONES[zoneIdx].grid, '#ffffff', 0.5), 'boss: ' + BOSSES[(g.level - 1) % 3].name);
-    Sound.zone();
-    g.phase = 'run'; g.phaseT = 0; g.runLen = levelLen();
-    g.cursor = 0; g.need = H * 0.3;
-    g.enemyT = 3; g.dropT = 8.01;
-    Sound.startMusic();
-  }
-
   // Drives the level flow. Returns false if the player died this frame.
   function updateCombat(dt, rdt, playing, c1) {
     if (playing) {
@@ -1064,10 +1077,10 @@
       if (g.phase === 'run') {
         g.rt += dt;
         g.enemyT -= dt;
-        if (g.enemyT <= 0) { spawnEnemy(); g.enemyT = lerp(3.6, 1.7, diff()) * rand(0.8, 1.2); }
+        if (g.enemyT <= 0) { spawnEnemy(); g.enemyT = LV().foeEvery * rand(0.8, 1.2); }
         g.dropT += dt;
-        // nobody shot anything for a while: a weapon floats in anyway
-        if (g.dropT > 15) dropWeapon(rand(W * 0.2, W * 0.8), -30 * U);
+        // nobody shot anything for a while: an upgrade floats in anyway
+        if (g.dropT > 11) dropUpgrade(rand(W * 0.2, W * 0.8), -30 * U);
         if (g.phaseT >= g.runLen) {
           g.phase = 'warn'; g.phaseT = 0;
           banner('WARNING', COL.hazard, 'boss approaching');
@@ -1076,7 +1089,7 @@
       } else if (g.phase === 'warn') {
         if (g.phaseT > 3.2) { g.phase = 'boss'; g.phaseT = 0; spawnBoss(); }
       } else if (g.phase === 'clear') {
-        if (g.phaseT > 3.2 && !boss) nextLevel();
+        if (g.phaseT > 2.8 && !boss) levelComplete();
       }
       const list = liveTargets();
       fireWeapon(rdt, list, c1);
@@ -1089,7 +1102,7 @@
     if (!updateEnemyBullets(dt, playing)) return false;
     for (const d of drops) {
       d.y += (g.speed * 0.3 + 60 * U) * dt; d.t += dt;
-      if (playing && Math.hypot(P.x - d.x, P.y - d.y) < P.r + 24 * U) { d.dead = true; pickUpWeapon(d); continue; }
+      if (playing && Math.hypot(P.x - d.x, P.y - d.y) < P.r + 24 * U) { d.dead = true; pickUpgrade(d); continue; }
       if (d.y > H + 40 * U) d.dead = true;
     }
     compact(drops);
@@ -1106,7 +1119,7 @@
   function drawCombatFront(c1) {
     ctx.globalCompositeOperation = 'lighter';
     if (g.beam && state.mode === 'play') {
-      const bw = g.beam.w, top = g.beam.y, bot = P.y - P.r * 1.1, col = WEAPONS.beam.color;
+      const bw = g.beam.w, top = g.beam.y, bot = P.y - P.r * 1.1, col = UPGRADES.beam.color;
       const wob = 1 + 0.15 * Math.sin(clock * 50);
       ctx.fillStyle = rgba(col, 0.25); ctx.fillRect(P.x - bw * 1.2 * wob, top, bw * 2.4 * wob, bot - top);
       ctx.fillStyle = col; ctx.fillRect(P.x - bw / 2, top, bw, bot - top);
@@ -1180,7 +1193,7 @@
   }
 
   function drawDrop(d) {
-    const def = WEAPONS[d.kind], R = 17 * U, y = d.y + Math.sin(d.t * 4) * 3 * U;
+    const def = UPGRADES[d.kind], R = 17 * U, y = d.y + Math.sin(d.t * 4) * 3 * U;
     const pulse = (d.t * 1.4) % 1;
     ctx.strokeStyle = rgba(def.color, 0.7 * (1 - pulse));
     ctx.lineWidth = 2 * U;
@@ -1317,7 +1330,7 @@
       const sp = 120 * U;
       bgScroll += sp * rdt;
       for (const s of stars) { s.y += sp * s.z * rdt; if (s.y > H) { s.y -= H; s.x = Math.random() * W; } }
-      if (state.mode !== 'over') {
+      if (state.mode !== 'over' && state.mode !== 'complete') {
         P.x = W / 2 + Math.sin(clock * 0.9) * 26 * U;
         P.y = menuShipY + Math.sin(clock * 1.7) * 6 * U;
         P.vx = Math.cos(clock * 0.9) * 26 * U * 0.9;
@@ -1503,7 +1516,7 @@
     drawGrid(gridC, bg);
     drawStars();
 
-    const inRun = g && (state.mode === 'play' || state.mode === 'dying' || state.mode === 'paused' || state.mode === 'over');
+    const inRun = g && (state.mode === 'play' || state.mode === 'dying' || state.mode === 'paused' || state.mode === 'over' || state.mode === 'complete');
     const [c1, c2] = skinColors(save.skin, clock);
 
     if (inRun) {
@@ -1844,11 +1857,18 @@
   // ---------- UI ----------
   const ui = {
     hud: $('hud'), score: $('hudScore'), multWrap: $('hudMultWrap'), mult: $('hudMult'), combo: $('hudCombo'),
-    shards: $('hudShards'), fx: $('hudFx'), weapon: $('hudWeapon'),
+    shards: $('hudShards'), fx: $('hudFx'), weapon: $('hudWeapon'), ups: $('hudUps'),
     bar: $('hudBar'), barLabel: $('hudBarLabel'), barFill: $('hudBarFill'),
-    menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'),
+    menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'), clear: $('clear'), levels: $('levels'),
   };
-  const screens = ['menu', 'over', 'pause', 'shop'];
+  const screens = ['menu', 'over', 'pause', 'shop', 'clear', 'levels'];
+  // five mini bars in the HUD, one per upgrade type
+  const upBars = {};
+  for (const k of DROP_POOL) {
+    const sp = document.createElement('span'), fill = document.createElement('i');
+    sp.style.color = UPGRADES[k].color; sp.title = UPGRADES[k].name;
+    sp.appendChild(fill); ui.ups.appendChild(sp); upBars[k] = fill;
+  }
   let shopReturn = 'menu';
   function show(name) {
     for (const s of screens) ui[s].hidden = s !== name;
@@ -1869,19 +1889,17 @@
     ui.combo.style.transform = `scaleX(${clamp(g.comboT / 2.3, 0, 1).toFixed(3)})`;
     if (g.shards !== last.shards) { ui.shards.textContent = g.shards; last.shards = g.shards; }
     let label, fill, isBoss = false;
-    if (g.phase === 'run') { label = `Level ${g.level} · Boss ahead`; fill = g.phaseT / g.runLen; }
+    if (g.phase === 'run') { label = `Level ${g.level} · ${LV().name}`; fill = g.phaseT / g.runLen; }
     else if (g.phase === 'warn') { label = 'Warning'; fill = 1; isBoss = true; }
     else if (g.phase === 'boss' && boss) { label = boss.name; fill = boss.entering ? 1 - (boss.y - boss.ty) / (-140 * U - boss.ty) : boss.hp / boss.max; isBoss = true; }
     else { label = 'Boss down'; fill = 0; }
     if (label !== last.bar) { ui.barLabel.textContent = label; last.bar = label; }
     if (isBoss !== last.barBoss) { ui.bar.classList.toggle('boss', isBoss); last.barBoss = isBoss; }
     ui.barFill.style.transform = `scaleX(${clamp(fill, 0, 1).toFixed(3)})`;
-    const wk = g.weapon.kind + g.weapon.tier;
+    const wk = DROP_POOL.map((k) => g.ups[k]).join('');
     if (wk !== last.weapon) {
-      const def = WEAPONS[g.weapon.kind];
-      ui.weapon.textContent = def.name + (g.weapon.kind === 'blaster' ? '' : ' Lv' + g.weapon.tier);
-      ui.weapon.style.color = def.color || COL.ink;
-      ui.weapon.style.borderColor = def.color || '';
+      ui.weapon.textContent = 'Gun Lv ' + gunLevel();
+      for (const k of DROP_POOL) upBars[k].style.height = (g.ups[k] / UP_MAX) * 100 + '%';
       last.weapon = wk;
     }
     const fx = [];
@@ -1897,39 +1915,126 @@
     }
   }
 
+  const lvSave = (n) => save.lv[n] || { stars: 0, best: 0 };
+  const totalStars = () => LEVELS.reduce((a, _, i) => a + lvSave(i + 1).stars, 0);
+  const nextToPlay = () => Math.min(save.unlocked, LEVELS.length);
+
   function refreshMenu() {
-    $('menuBest').textContent = save.best.toLocaleString('en-US');
+    $('menuStars').textContent = totalStars();
     $('menuCoins').textContent = save.coins.toLocaleString('en-US');
     $('btnSound').textContent = Sound.muted ? 'Sound off' : 'Sound on';
+    $('btnPlay').textContent = 'Play level ' + nextToPlay();
   }
 
-  function startRun() {
+  function clearRun() {
+    Sound.stopMusic();
+    g = null;
+    obstacles.length = shards.length = powerups.length = texts.length = 0;
+    resetCombat();
+    showHud(false);
+  }
+
+  function startLevel(n) {
+    n = clamp(n | 0, 1, LEVELS.length);
+    if (n > save.unlocked) return;
     Sound.init();
     Sound.click();
-    newRun();
+    newRun(n);
     state.mode = 'play';
     show(null);
     showHud(true);
     last.score = last.mult = last.shards = -1; last.fx = null; last.bar = ''; last.barBoss = null; last.weapon = '';
+    banner('LEVEL ' + n, mixHex(ZONES[LV().zone].grid, '#ffffff', 0.55), LV().name);
     Sound.startMusic();
+  }
+
+  function levelComplete() {
+    state.mode = 'complete';
+    pbullets.length = texts.length = 0;
+    g.beam = null;
+    Sound.stopMusic();
+    Sound.buy();
+    showHud(false);
+    const n = g.level, score = Math.floor(g.score), prevSave = lvSave(n);
+    const goals = [
+      ['Beat the boss', true],
+      ['No revive', !g.revived],
+      [`Destroy 70% of enemies (${g.runKills}/${g.runSpawned})`, g.runSpawned === 0 || g.runKills / g.runSpawned >= 0.7],
+    ];
+    // stars count in order: the 2nd needs the 1st, the 3rd needs both
+    let stars = 0;
+    for (const [, ok] of goals) { if (!ok) break; stars++; }
+    const isBest = score > prevSave.best;
+    save.lv[n] = { stars: Math.max(prevSave.stars, stars), best: Math.max(prevSave.best, score) };
+    save.best = Math.max(save.best, score);
+    save.unlocked = Math.max(save.unlocked, Math.min(n + 1, LEVELS.length));
+    save.coins += g.shards - g.banked;
+    g.banked = g.shards;
+    save.games++;
+    persist();
+    $('clearTitle').textContent = n === LEVELS.length ? 'Final level complete' : `Level ${n} complete`;
+    $('clearName').textContent = LV().name;
+    $('clearScore').textContent = score.toLocaleString('en-US');
+    $('clearNew').hidden = !isBest;
+    const starEls = $('clearStars').children;
+    for (let i = 0; i < 3; i++) starEls[i].className = i < stars ? 'on' : '';
+    const ul = $('clearGoals');
+    ul.innerHTML = '';
+    goals.forEach(([txt], i) => {
+      const li = document.createElement('li');
+      li.className = i < stars ? 'done' : '';
+      const st = document.createElement('i'); st.className = 'star' + (i < stars ? ' on' : '');
+      li.append(st, txt);
+      ul.appendChild(li);
+    });
+    const hasNext = n < LEVELS.length;
+    $('btnNext').hidden = !hasNext;
+    show('clear');
+  }
+
+  function openLevels() {
+    clearRun();
+    state.mode = 'levels';
+    $('levelsStars').textContent = totalStars();
+    const grid = $('levelGrid');
+    grid.innerHTML = '';
+    LEVELS.forEach((lv, i) => {
+      const n = i + 1, sv = lvSave(n), locked = n > save.unlocked;
+      const b = document.createElement('button');
+      b.className = 'level-card' + (n === nextToPlay() && !sv.stars ? ' next' : '');
+      b.style.setProperty('--accent', mixHex(ZONES[lv.zone].grid, '#ffffff', 0.35));
+      b.disabled = locked;
+      const num = document.createElement('b'); num.className = 'num'; num.textContent = n;
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = lv.name;
+      const st = document.createElement('span'); st.className = 'stars';
+      for (let k = 0; k < 3; k++) { const e = document.createElement('i'); if (k < sv.stars) e.className = 'on'; st.appendChild(e); }
+      const sub = document.createElement('small');
+      sub.textContent = locked ? 'Locked' : sv.best ? 'Best ' + sv.best.toLocaleString('en-US') : 'Boss: ' + (lv.bossName || BOSSES[lv.boss].name);
+      b.append(num, name, st, sub);
+      b.setAttribute('aria-label', `Level ${n}, ${lv.name}${locked ? ', locked' : `, ${sv.stars} of 3 stars`}`);
+      b.addEventListener('click', () => startLevel(n));
+      grid.appendChild(b);
+    });
+    show('levels');
   }
 
   function gameOver() {
     state.mode = 'over';
     const score = Math.floor(g.score);
-    const isBest = score > save.best;
-    if (isBest) save.best = score;
+    // a level's best score only counts when the level is cleared
+    const isBest = false;
     save.coins += g.shards - g.banked;
     g.banked = g.shards;
     save.games++;
     persist();
     $('overScore').textContent = score.toLocaleString('en-US');
     $('overNew').hidden = !isBest;
-    $('overTitle').textContent = isBest ? 'Record run' : pick(['Run over', 'Wrecked', 'Clipped', 'Out of the rift']);
-    $('overBest').textContent = save.best.toLocaleString('en-US');
+    $('overTitle').textContent = `Level ${g.level} · ` + pick(['Run over', 'Wrecked', 'Clipped']);
+    $('overName').textContent = LV().name;
+    $('overBest').textContent = lvSave(g.level).best ? lvSave(g.level).best.toLocaleString('en-US') : '–';
     $('overShards').textContent = g.shards;
-    $('overBosses').textContent = g.bosses;
-    $('overLevel').textContent = 'Level ' + g.level;
+    $('overGun').textContent = 'Lv ' + gunLevel();
+    $('overReach').textContent = g.phase === 'run' ? Math.floor((g.phaseT / g.runLen) * 100) + '%' : 'Boss';
     const rv = $('btnRevive');
     rv.hidden = g.revived;
     rv.disabled = save.coins < 50;
@@ -1974,12 +2079,8 @@
     Sound.startMusic();
   }
   function goMenu() {
-    Sound.stopMusic();
+    clearRun();
     state.mode = 'menu';
-    g = null;
-    obstacles.length = shards.length = powerups.length = texts.length = 0;
-    resetCombat();
-    showHud(false);
     refreshMenu();
     show('menu');
     zoneIdx = zoneFrom = 0; zoneBlend = 1;
@@ -2058,7 +2159,9 @@
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     keys.add(k);
     if (k === ' ' || k === 'Enter') {
-      if (state.mode === 'menu' || state.mode === 'over') { e.preventDefault(); startRun(); }
+      if (state.mode === 'menu') { e.preventDefault(); startLevel(nextToPlay()); }
+      else if (state.mode === 'over') { e.preventDefault(); startLevel(g.level); }
+      else if (state.mode === 'complete') { e.preventDefault(); startLevel(Math.min(g.level + 1, LEVELS.length)); }
       else if (state.mode === 'paused') { e.preventDefault(); resume(); }
     }
     if ((k === 'Escape' || k === 'p') && state.mode === 'play') pause();
@@ -2069,10 +2172,15 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   window.addEventListener('resize', resize);
 
-  $('btnPlay').addEventListener('click', startRun);
-  $('btnRetry').addEventListener('click', startRun);
+  $('btnPlay').addEventListener('click', () => startLevel(nextToPlay()));
+  $('btnRetry').addEventListener('click', () => startLevel(g ? g.level : 1));
   $('btnRevive').addEventListener('click', () => { Sound.init(); revive(); });
-  $('btnHome').addEventListener('click', () => { Sound.click(); goMenu(); });
+  $('btnHome').addEventListener('click', () => { Sound.click(); openLevels(); });
+  $('btnLevels').addEventListener('click', () => { Sound.init(); Sound.click(); openLevels(); });
+  $('btnLevels2').addEventListener('click', () => { Sound.click(); openLevels(); });
+  $('btnLevelsBack').addEventListener('click', () => { Sound.click(); goMenu(); });
+  $('btnNext').addEventListener('click', () => startLevel(Math.min(g.level + 1, LEVELS.length)));
+  $('btnReplay').addEventListener('click', () => startLevel(g.level));
   $('btnSkins').addEventListener('click', () => { Sound.init(); Sound.click(); openShop('menu'); });
   $('btnSkins2').addEventListener('click', () => { Sound.click(); openShop('over'); });
   $('btnShopBack').addEventListener('click', () => {
@@ -2104,7 +2212,10 @@
 
   // test hook (harmless in production)
   window.__rift = {
-    get state() { return state.mode; }, get run() { return g; }, get boss() { return boss; }, start: startRun,
+    get state() { return state.mode; }, get run() { return g; }, get boss() { return boss; }, start: (n) => startLevel(n || 1),
+    unlockAll() { save.unlocked = LEVELS.length; persist(); },
+    aimTarget() { const d = drops[0]; if (d && d.y > H * 0.3) return d.x; if (boss) return boss.x; const e = enemies.find((q) => !q.dead && q.y > 0); return e ? e.x : null; },
+    steer(x) { P.tx = x; },
     showcase() { DROP_POOL.forEach((k, i) => drops.push({ x: W * (0.14 + i * 0.18), y: H * 0.45 + (i % 2) * 70 * U, kind: k, t: i })); },
   };
 })();

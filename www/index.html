@@ -20,7 +20,8 @@
 <div id="hud" hidden>
   <div class="hud-side">
     <div class="chip"><i class="gem"></i><span id="hudShards">0</span></div>
-    <div id="hudWeapon" class="weapon">Blaster</div>
+    <div id="hudWeapon" class="weapon">Gun Lv 1</div>
+    <div id="hudUps" class="ups" aria-label="Upgrades"></div>
     <div id="hudFx" class="fx"></div>
   </div>
   <div class="hud-mid">
@@ -41,34 +42,36 @@
 
 <section id="menu" class="screen">
   <h1 class="logo"><span class="a">RIFT</span><span class="b">RUNNER</span></h1>
-  <p class="tag">Dodge, shoot, grab <b>weapon drops</b> and beat the boss of every level.</p>
+  <p class="tag">Dodge, shoot, collect <b>upgrades</b> for your gun and beat the boss of every level.</p>
   <div class="spacer"></div>
   <div class="stats">
-    <div><span class="lbl">Best</span><b id="menuBest">0</b></div>
+    <div><span class="lbl">Stars</span><b><i class="star on"></i><span id="menuStars">0</span></b></div>
     <div><span class="lbl">Shards</span><b><i class="gem"></i><span id="menuCoins">0</span></b></div>
   </div>
   <button id="btnPlay" class="btn primary">Play</button>
   <div class="row">
+    <button id="btnLevels" class="btn">Levels</button>
     <button id="btnSkins" class="btn">Skins</button>
-    <button id="btnSound" class="btn">Sound on</button>
   </div>
+  <button id="btnSound" class="link-btn">Sound on</button>
 </section>
 
 <section id="over" class="screen" hidden>
   <p class="eyebrow" id="overTitle">Run over</p>
+  <p class="level-name" id="overName">First Light</p>
   <div class="big" id="overScore">0</div>
   <p class="newbest" id="overNew" hidden>New best</p>
   <dl class="results">
     <div><dt>Best</dt><dd id="overBest">0</dd></div>
     <div><dt>Shards</dt><dd id="overShards">0</dd></div>
-    <div><dt>Bosses</dt><dd id="overBosses">0</dd></div>
-    <div><dt>Reached</dt><dd id="overLevel">Level 1</dd></div>
+    <div><dt>Gun</dt><dd id="overGun">Lv 1</dd></div>
+    <div><dt>Reached</dt><dd id="overReach">0%</dd></div>
   </dl>
   <div class="spacer"></div>
   <button id="btnRevive" class="btn ghost">Revive for 50 <i class="gem"></i></button>
-  <button id="btnRetry" class="btn primary">Run again</button>
+  <button id="btnRetry" class="btn primary">Try again</button>
   <div class="row">
-    <button id="btnHome" class="btn">Menu</button>
+    <button id="btnHome" class="btn">Levels</button>
     <button id="btnSkins2" class="btn">Skins</button>
   </div>
 </section>
@@ -78,6 +81,29 @@
   <div class="spacer"></div>
   <button id="btnResume" class="btn primary">Resume</button>
   <button id="btnQuit" class="btn">End run</button>
+</section>
+
+<section id="clear" class="screen" hidden>
+  <p class="eyebrow" id="clearTitle">Level 1 complete</p>
+  <p class="level-name" id="clearName">First Light</p>
+  <div class="stars stars-big" id="clearStars"><i></i><i></i><i></i></div>
+  <div class="big" id="clearScore">0</div>
+  <p class="newbest" id="clearNew" hidden>New best</p>
+  <ul class="goals" id="clearGoals"></ul>
+  <div class="spacer"></div>
+  <button id="btnNext" class="btn primary">Next level</button>
+  <div class="row">
+    <button id="btnReplay" class="btn">Replay</button>
+    <button id="btnLevels2" class="btn">Levels</button>
+  </div>
+</section>
+
+<section id="levels" class="screen dim" hidden>
+  <p class="eyebrow">Levels</p>
+  <p class="wallet"><i class="star on"></i><span id="levelsStars">0</span><span class="of">/ 30</span></p>
+  <div id="levelGrid" class="levels"></div>
+  <div class="spacer"></div>
+  <button id="btnLevelsBack" class="btn">Back</button>
 </section>
 
 <section id="shop" class="screen dim" hidden>
