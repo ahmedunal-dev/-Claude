@@ -214,7 +214,7 @@
       eshot() { if (limit('eshot', 0.08)) tone(520, 0.08, { type: 'triangle', to: 260, vol: 0.05 }); },
       dash() { noise(0.25, { type: 'bandpass', freq: 600, to: 2600, q: 2, vol: 0.18 }); },
       enemyDie() { if (!limit('edie', 0.04)) return; noise(0.22, { freq: 2600, to: 180, vol: 0.24 }); tone(420, 0.14, { type: 'square', to: 90, vol: 0.05 }); },
-      box() { for (let i = 0; i < 7; i++) tone(mtof(72 + pick([0, 3, 5, 7, 10, 12, 15])), 0.07, { type: 'square', vol: 0.05, at: i * 0.045 }); tone(mtof(91), 0.3, { type: 'triangle', vol: 0.14, at: 0.32 }); },
+      pickup() { for (let i = 0; i < 7; i++) tone(mtof(72 + pick([0, 3, 5, 7, 10, 12, 15])), 0.07, { type: 'square', vol: 0.05, at: i * 0.045 }); tone(mtof(91), 0.3, { type: 'triangle', vol: 0.14, at: 0.32 }); },
       alarm() { for (let i = 0; i < 4; i++) { tone(620, 0.22, { type: 'sawtooth', to: 880, vol: 0.07, lp: 2200, at: i * 0.5 }); } },
       bossIn() { tone(70, 1.2, { type: 'sawtooth', to: 45, vol: 0.2, lp: 400 }); noise(1.0, { freq: 300, to: 1200, vol: 0.2 }); },
       bossDie() { tone(300, 1.4, { type: 'sawtooth', to: 30, vol: 0.18, lp: 1500 }); },
@@ -291,8 +291,8 @@
       meter: 0, overdrive: 0, odCount: 0, odCool: 0, shield: false, magnet: 0, slow: 0, invuln: 0.6,
       near: 0, revived: false, zone: 0, lastLaser: -99, lastPower: 0,
       tutorial: save.games < 3 ? 4 : 0, dying: 0, banner: null,
-      level: 1, stage: 0, phase: 'run', phaseT: 0, runLen: 28, rt: 0,
-      enemyT: 4, boxT: 5, boxDue: false, weapon: { kind: 'blaster', tier: 1 }, fireT: 0, beam: null,
+      level: 1, phase: 'run', phaseT: 0, runLen: 30, rt: 0,
+      enemyT: 3, dropT: 8.01, weapon: { kind: 'blaster', tier: 1 }, fireT: 0, beam: null,
       kills: 0, bosses: 0,
     };
     resetCombat();
@@ -302,7 +302,7 @@
     zoneIdx = 0; zoneFrom = 0; zoneBlend = 1;
   }
 
-  const diff = () => 1 - Math.exp(-g.rt / 55);
+  const diff = () => 1 - Math.exp(-g.rt / 65);
   // keeps ramping after diff() saturates, so long runs always end
   const late = () => clamp((g.rt - 75) / 150, 0, 1);
   const OD_TIME = 3.5, OD_COOL = 8;
@@ -330,10 +330,10 @@
   function spawnPattern() {
     const d = diff();
     const opts = [['blocks', 1.0]];
-    if (g.rt > 3) opts.push(['wall', 0.9]);
-    if (g.rt > 10) opts.push(['spinner', 0.75]);
-    if (g.rt > 18) opts.push(['mines', 0.6]);
-    if (g.rt > 22 && g.t - g.lastLaser > 5) opts.push(['laser', 0.6 + late() * 0.4]);
+    if (g.rt > 4) opts.push(['wall', 0.9]);
+    if (g.rt > 12) opts.push(['spinner', 0.75]);
+    if (g.rt > 24) opts.push(['mines', 0.6]);
+    if (g.rt > 34 && g.t - g.lastLaser > 5) opts.push(['laser', 0.6 + late() * 0.4]);
     const kind = weighted(opts);
     const top = -12 * U;
     let extent = 0, lane = null;
@@ -425,10 +425,7 @@
 
     // reward in the space before the next pattern
     const midY = top - extent - gap / 2;
-    if (kind !== 'laser' && g.boxDue) {
-      g.boxDue = false;
-      boxes.push({ x: clamp(lane ?? rand(40 * U, W - 40 * U), 40 * U, W - 40 * U), y: midY, t: 0 });
-    } else if (kind !== 'laser') {
+    if (kind !== 'laser') {
       if (g.rt > 8 && g.t - g.lastPower > 20 && Math.random() < 0.12) {
         g.lastPower = g.t;
         powerups.push({ x: clamp(lane ?? rand(40 * U, W - 40 * U), 40 * U, W - 40 * U), y: midY, kind: pick(['shield', 'magnet', 'slow']), t: 0 });
@@ -597,24 +594,27 @@
   }
 
   // =====================================================================
-  // ---------- combat: weapons, enemies, mystery boxes, bosses ----------
+  // ---------- combat: weapons, enemies, weapon drops, bosses ----------
   // =====================================================================
-  // A level is three stages. Each stage: dodge obstacles for stageLen()
-  // seconds (enemies + mystery boxes appear), then a boss fight.
-  // Boss 3 of each level is the hardest; every new level scales all bosses.
-  const enemies = [], ebullets = [], pbullets = [], boxes = [];
+  // Each level: dodge obstacles and shoot enemies for levelLen() seconds,
+  // then one boss. Bosses rotate Warden -> Hydra -> Rift Core and every
+  // level makes them tougher, so level 1 is gentle and it ramps from there.
+  // Enemies drop one of five weapons, each with its own colour and icon.
+  const enemies = [], ebullets = [], pbullets = [], drops = [];
   let boss = null;
-  const stageLen = () => 28 + g.stage * 6;
+  const levelLen = () => 30 + Math.min(g.level - 1, 5) * 3;
 
   const WEAPONS = {
     blaster: { name: 'Blaster', color: null },
-    spread: { name: 'Spread', color: '#ffd23f' },
-    rapid: { name: 'Rapid', color: '#7cf6ff' },
-    homing: { name: 'Homing', color: '#ff9a3c' },
-    beam: { name: 'Beam', color: '#ff7cf2' },
-    plasma: { name: 'Plasma', color: '#9dff3c' },
+    // cool, clearly separated hues so drops never read as warm-coloured hazards
+    spread: { name: 'Spread', color: '#ffe14d' },
+    rapid: { name: 'Rapid', color: '#2ef2ff' },
+    homing: { name: 'Homing', color: '#5b8cff' },
+    beam: { name: 'Beam', color: '#c08cff' },
+    plasma: { name: 'Plasma', color: '#7dff5a' },
   };
-  const BOX_POOL = ['spread', 'rapid', 'homing', 'beam', 'plasma'];
+  const DROP_POOL = ['spread', 'rapid', 'homing', 'beam', 'plasma'];
+  const DROP_CHANCE = { drone: 0.12, diver: 0.25, gunner: 0.7 };
 
   const ENEMY = {
     drone: { color: '#ff5a5a', hp: 2, r: 14, pts: 30 },
@@ -623,13 +623,13 @@
   };
 
   const BOSSES = [
-    { name: 'Warden', hp: 70, r: 44, color: '#ff9a3c' },
-    { name: 'Hydra', hp: 115, r: 46, color: '#ff4fd8' },
-    { name: 'Rift Core', hp: 180, r: 50, color: '#ff2e6a' },
+    { name: 'Warden', hp: 55, r: 44, color: '#ff9a3c' },
+    { name: 'Hydra', hp: 95, r: 46, color: '#ff4fd8' },
+    { name: 'Rift Core', hp: 140, r: 50, color: '#ff2e6a' },
   ];
 
   function resetCombat() {
-    enemies.length = ebullets.length = pbullets.length = boxes.length = 0;
+    enemies.length = ebullets.length = pbullets.length = drops.length = 0;
     boss = null;
   }
 
@@ -731,28 +731,30 @@
     else if (t.hp <= 0 && !t.dead) killEnemy(t, true);
   }
 
-  function openBox(b) {
+  function dropWeapon(x, y) {
+    g.dropT = 0;
+    drops.push({ x: clamp(x, 30 * U, W - 30 * U), y, kind: pick(DROP_POOL), t: 0 });
+  }
+
+  function pickUpWeapon(d) {
     const cur = g.weapon;
-    let kind = pick(BOX_POOL);
-    // a fair chance to level up what you already carry
-    if (cur.kind !== 'blaster' && cur.tier < 3 && Math.random() < 0.35) kind = cur.kind;
-    if (kind === cur.kind) cur.tier = Math.min(3, cur.tier + 1);
-    else g.weapon = { kind, tier: 1 };
+    if (d.kind === cur.kind) cur.tier = Math.min(3, cur.tier + 1);
+    else g.weapon = { kind: d.kind, tier: 1 };
     const w = g.weapon, def = WEAPONS[w.kind];
-    floatText(b.x, b.y - 30 * U, def.name.toUpperCase() + (w.tier > 1 ? ' LV' + w.tier : '') + '!', def.color, 24);
-    burst(b.x, b.y, 30, def.color, 360, 3, 0.7);
+    floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + (w.tier > 1 ? ' LV' + w.tier : '') + '!', def.color, 24);
+    burst(d.x, d.y, 30, def.color, 360, 3, 0.7);
     flash = 0.3; flashColor = def.color;
-    Sound.box();
+    Sound.pickup();
     haptic('medium');
   }
 
   // ---- enemies ----
   function spawnEnemy() {
     const L = g.level;
-    const hpMul = 1 + 0.4 * (L - 1) + 0.15 * g.stage;
+    const hpMul = 1 + 0.35 * (L - 1);
     const opts = [['drone', 1]];
-    if (g.stage >= 1 || L > 1 || g.phaseT > 12) opts.push(['diver', 0.6]);
-    if (g.stage >= 1 || L > 1 || g.phaseT > 18) opts.push(['gunner', 0.5]);
+    if (L >= 2 || g.phaseT > 16) opts.push(['diver', 0.6]);
+    if (L >= 3 || (L === 2 && g.phaseT > 10)) opts.push(['gunner', 0.5]);
     const kind = weighted(opts), def = ENEMY[kind];
     const base = { kind, r: def.r * U, hp: def.hp * hpMul, max: def.hp * hpMul, t: 0, flash: 0, color: def.color };
     if (kind === 'drone') {
@@ -779,6 +781,8 @@
     addShake(3);
     const n = e.kind === 'gunner' ? 3 : e.kind === 'diver' ? 2 : 1;
     for (let i = 0; i < n; i++) addShard(e.x + rand(-14, 14) * U, e.y + rand(-10, 10) * U);
+    // drops only before the boss; a dry spell guarantees the next one
+    if (g.phase === 'run' && (Math.random() < DROP_CHANCE[e.kind] || g.dropT > 8)) dropWeapon(e.x, e.y);
   }
 
   function eshot(x, y, ang, speed, o = {}) {
@@ -819,7 +823,7 @@
           e.shotT -= dt;
           if (e.shotT <= 0 && playing) {
             e.shotT = lerp(1.5, 0.9, d) / (1 + 0.15 * (g.level - 1));
-            const a = aimAt(e.x, e.y), n = g.level > 1 || g.stage > 1 ? 3 : 1;
+            const a = aimAt(e.x, e.y), n = g.level >= 3 ? 3 : 1;
             for (let i = 0; i < n; i++) eshot(e.x, e.y + e.r * 0.6, a + (i - (n - 1) / 2) * 0.22, (250 + 60 * d) * U);
             Sound.eshot();
           }
@@ -866,19 +870,20 @@
 
   // ---- bosses ----
   function spawnBoss() {
-    const def = BOSSES[g.stage], L = g.level;
-    const hp = def.hp * (1 + 0.6 * (L - 1));
+    const L = g.level, idx = (L - 1) % 3, def = BOSSES[idx];
+    const hp = def.hp * (1 + 0.35 * (L - 1));
     const dr = def.r * U;
     // hover just below the HUD so the health bar never covers the boss
     const hudBottom = ui.hud.getBoundingClientRect().bottom || H * 0.15;
     boss = {
-      isBoss: true, idx: g.stage, name: def.name, color: def.color,
+      isBoss: true, idx, name: def.name, color: def.color,
       x: W / 2, y: -140 * U, ty: Math.max(H * 0.24, hudBottom + dr * 1.1 + 18 * U),
-      dr, r: g.stage < 2 ? dr * 1.3 : dr, hp, max: hp,
+      dr, r: idx < 2 ? dr * 1.3 : dr, hp, max: hp,
       t: 0, entering: true, vulnerable: false, flash: 0, atk: 1.4, step: 0, spiral: null, phase: 1, dying: 0,
-      spd: 1 + 0.1 * (L - 1), rate: 1 + 0.12 * (L - 1),
+      // level 1 bullets are slower and attacks less frequent
+      spd: 0.85 + 0.07 * (L - 1), rate: 0.8 + 0.1 * (L - 1),
     };
-    banner(def.name.toUpperCase(), def.color, 'boss ' + (g.stage + 1) + ' of 3');
+    banner(def.name.toUpperCase(), def.color, 'level ' + L + ' boss');
     Sound.bossIn();
   }
 
@@ -894,12 +899,12 @@
   }
 
   function bossAttack(b) {
-    const s = b.spd * U, step = b.step++;
+    const s = b.spd * U, step = b.step++, k = g.level - 1;
     const fan = (n, spread, speed) => { const a = aimAt(b.x, b.y); for (let i = 0; i < n; i++) eshot(b.x, b.y + b.r * 0.5, a + (i - (n - 1) / 2) * spread, speed * s, { color: b.color }); Sound.eshot(); };
     const ring = (n, speed, off) => { for (let i = 0; i < n; i++) eshot(b.x, b.y, off + (i * TAU) / n, speed * s, { color: '#ffffff', r: 6 }); Sound.eshot(); };
     const spiral = (arms, dur, rot, speed, int) => { b.spiral = { arms, t: dur, rot, speed: speed * s, int, acc: 0, ang: Math.random() * TAU }; };
     const wall = (speed) => {
-      const gapW = 96 * U, gx = clamp(P.x + rand(-80, 80) * U, gapW, W - gapW);
+      const gapW = (120 - Math.min(30, 5 * k)) * U, gx = clamp(P.x + rand(-80, 80) * U, gapW, W - gapW);
       for (let x = 10 * U; x < W; x += 24 * U) if (Math.abs(x - gx) > gapW / 2) eshot(x, b.y + b.r, Math.PI / 2, speed * s, { color: b.color, r: 6 });
       Sound.eshot();
     };
@@ -915,15 +920,15 @@
 
     if (b.idx === 0) { // Warden: aimed bursts and rings
       switch (step % 4) {
-        case 0: case 1: case 2: fan(3, 0.22, 290); return 0.95;
-        default: ring(14, 200, Math.random() * TAU); return 1.5;
+        case 0: case 1: case 2: fan(k >= 3 ? 5 : 3, 0.22, 290); return 0.95;
+        default: ring(10 + Math.min(12, 2 * k), 200, Math.random() * TAU); return 1.5;
       }
     }
     if (b.idx === 1) { // Hydra: spirals, lasers, bullet walls, summons
       switch (step % 5) {
-        case 0: spiral(2, 2.4, 0.24, 210, 0.1); return 2.8;
+        case 0: spiral(k >= 4 ? 3 : 2, 2.4, 0.24, 210, 0.1); return 2.8;
         case 1: fan(5, 0.18, 320); return 1.1;
-        case 2: bossLasers(2); return 1.8;
+        case 2: bossLasers(k >= 4 ? 2 : 1); return 1.8;
         case 3: wall(240); return 1.5;
         default:
           if (b.hp < b.max * 0.6 && enemies.length < 4) { summon('drone', 2); return 1.2; }
@@ -940,15 +945,15 @@
     }
     if (b.phase === 2) {
       switch (step % 4) {
-        case 0: spiral(3, 2.6, 0.2, 225, 0.085); return 2.4;
-        case 1: bossLasers(2); return 1.4;
+        case 0: spiral(k >= 5 ? 3 : 2, 2.6, 0.2, 225, 0.085); return 2.4;
+        case 1: bossLasers(k >= 5 ? 2 : 1); return 1.4;
         case 2: wall(270); return 1.3;
         default: fan(7, 0.14, 350); return 1.05;
       }
     }
     switch (step % 4) {
-      case 0: spiral(4, 3, (step % 8 < 4 ? 1 : -1) * 0.17, 235, 0.075); fan(3, 0.2, 370); return 2.3;
-      case 1: bossLasers(3); wall(290); return 1.7;
+      case 0: spiral(k >= 5 ? 4 : 3, 3, (step % 8 < 4 ? 1 : -1) * 0.17, 235, 0.075); fan(3, 0.2, 370); return 2.3;
+      case 1: bossLasers(k >= 5 ? 3 : 2); wall(290); return 1.7;
       case 2: ring(22, 240, Math.random() * TAU); fan(5, 0.16, 370); return 1.1;
       default: if (enemies.length < 4) summon('diver', 2); ring(18, 220, 0); return 1.4;
     }
@@ -1026,7 +1031,7 @@
     ebullets.length = 0;
     for (const o of obstacles) if (o.type === 'laser') o.dead = true;
     for (const e of enemies) if (!e.dead) killEnemy(e, false);
-    const bonus = 500 * (b.idx + 1) * g.level;
+    const bonus = 1000 * g.level;
     g.score += bonus;
     g.bosses++;
     floatText(b.x, b.y + b.r + 30 * U, '+' + bonus.toLocaleString('en-US'), COL.shard, 28);
@@ -1038,27 +1043,21 @@
     haptic('heavy');
   }
 
-  function nextStage() {
+  function nextLevel() {
     if (g.weapon.kind !== 'blaster') floatText(P.x, P.y - 46 * U, 'WEAPON RESET', COL.dim, 15);
     g.weapon = { kind: 'blaster', tier: 1 };
     g.beam = null;
-    g.stage++;
-    if (g.stage >= 3) {
-      g.stage = 0;
-      g.level++;
-      zoneFrom = zoneIdx; zoneIdx = (g.level - 1) % ZONES.length; zoneBlend = 0;
-      banner('LEVEL ' + g.level, mixHex(ZONES[zoneIdx].grid, '#ffffff', 0.5), 'bosses hit harder');
-    } else {
-      banner('STAGE ' + (g.stage + 1), COL.ink, 'next: ' + BOSSES[g.stage].name);
-    }
+    g.level++;
+    zoneFrom = zoneIdx; zoneIdx = (g.level - 1) % ZONES.length; zoneBlend = 0;
+    banner('LEVEL ' + g.level, mixHex(ZONES[zoneIdx].grid, '#ffffff', 0.5), 'boss: ' + BOSSES[(g.level - 1) % 3].name);
     Sound.zone();
-    g.phase = 'run'; g.phaseT = 0; g.runLen = stageLen();
+    g.phase = 'run'; g.phaseT = 0; g.runLen = levelLen();
     g.cursor = 0; g.need = H * 0.3;
-    g.enemyT = 3; g.boxT = 5;
+    g.enemyT = 3; g.dropT = 8.01;
     Sound.startMusic();
   }
 
-  // Drives the stage flow. Returns false if the player died this frame.
+  // Drives the level flow. Returns false if the player died this frame.
   function updateCombat(dt, rdt, playing, c1) {
     if (playing) {
       g.phaseT += dt;
@@ -1066,8 +1065,9 @@
         g.rt += dt;
         g.enemyT -= dt;
         if (g.enemyT <= 0) { spawnEnemy(); g.enemyT = lerp(3.6, 1.7, diff()) * rand(0.8, 1.2); }
-        g.boxT -= dt;
-        if (g.boxT <= 0) { g.boxDue = true; g.boxT = rand(8, 11); }
+        g.dropT += dt;
+        // nobody shot anything for a while: a weapon floats in anyway
+        if (g.dropT > 15) dropWeapon(rand(W * 0.2, W * 0.8), -30 * U);
         if (g.phaseT >= g.runLen) {
           g.phase = 'warn'; g.phaseT = 0;
           banner('WARNING', COL.hazard, 'boss approaching');
@@ -1076,7 +1076,7 @@
       } else if (g.phase === 'warn') {
         if (g.phaseT > 3.2) { g.phase = 'boss'; g.phaseT = 0; spawnBoss(); }
       } else if (g.phase === 'clear') {
-        if (g.phaseT > 3.2 && !boss) nextStage();
+        if (g.phaseT > 3.2 && !boss) nextLevel();
       }
       const list = liveTargets();
       fireWeapon(rdt, list, c1);
@@ -1087,20 +1087,20 @@
     if (boss && !updateBoss(dt, playing)) return false;
     if (!updateEnemies(dt, playing)) return false;
     if (!updateEnemyBullets(dt, playing)) return false;
-    for (const b of boxes) {
-      b.y += g.speed * dt; b.t += dt;
-      if (playing && Math.hypot(P.x - b.x, P.y - b.y) < P.r + 22 * U) { b.dead = true; openBox(b); continue; }
-      if (b.y > H + 30 * U) b.dead = true;
+    for (const d of drops) {
+      d.y += (g.speed * 0.3 + 60 * U) * dt; d.t += dt;
+      if (playing && Math.hypot(P.x - d.x, P.y - d.y) < P.r + 24 * U) { d.dead = true; pickUpWeapon(d); continue; }
+      if (d.y > H + 40 * U) d.dead = true;
     }
-    compact(boxes);
+    compact(drops);
     return true;
   }
 
   // ---- combat rendering ----
   function drawCombatBack() {
-    for (const b of boxes) drawBox(b);
     for (const e of enemies) drawEnemy(e);
     if (boss) drawBoss(boss);
+    for (const d of drops) drawDrop(d);
   }
 
   function drawCombatFront(c1) {
@@ -1127,7 +1127,7 @@
       } else {
         const a = Math.atan2(b.vy, b.vx);
         ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(a);
-        ctx.fillStyle = rgba(b.color, 0.35); ctx.fillRect(-12 * U, -b.r, 18 * U, b.r * 2);
+        ctx.fillStyle = rgba(b.color, 0.8); ctx.fillRect(-12 * U, -b.r, 18 * U, b.r * 2);
         ctx.fillStyle = '#ffffff'; ctx.fillRect(-7 * U, -b.r * 0.4, 12 * U, b.r * 0.8);
         ctx.restore();
       }
@@ -1140,23 +1140,64 @@
     }
   }
 
-  function drawBox(b) {
-    const hue = (clock * 140) % 360, col = hslHex(hue, 100, 65);
-    const s = 15 * U, y = b.y + Math.sin(b.t * 5) * 3 * U;
-    glow(b.x, y, s * 3.2, col, 0.75);
-    ctx.save();
-    ctx.translate(b.x, y);
-    ctx.rotate(Math.sin(b.t * 2.4) * 0.25);
-    ctx.fillStyle = 'rgba(12,6,34,0.85)';
-    ctx.fillRect(-s, -s, s * 2, s * 2);
-    ctx.beginPath(); ctx.rect(-s, -s, s * 2, s * 2);
-    neonPath(col, 2.2 * U);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${19 * U}px "Chakra Petch", sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('?', 0, 1 * U);
-    ctx.textBaseline = 'alphabetic';
+  // One icon per weapon. Used on drops and repeated in the pickup text colour.
+  function weaponIcon(kind, s, col) {
+    ctx.strokeStyle = col; ctx.fillStyle = col;
+    ctx.lineWidth = 2.6 * U; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    if (kind === 'spread') {
+      // three full arrows fanning upward from one point
+      const px = 0, py = s * 0.9;
+      for (const a of [-0.6, 0, 0.6]) {
+        const dx = Math.sin(a), dy = -Math.cos(a);
+        ctx.moveTo(px + dx * s * 0.2, py + dy * s * 0.2); ctx.lineTo(px + dx * s * 1.25, py + dy * s * 1.25);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (const a of [-0.6, 0, 0.6]) {
+        const dx = Math.sin(a), dy = -Math.cos(a), tx = px + dx * s * 1.75, ty = py + dy * s * 1.75, h = s * 0.55;
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - dx * h - dy * h * 0.6, ty - dy * h + dx * h * 0.6);
+        ctx.lineTo(tx - dx * h + dy * h * 0.6, ty - dy * h - dx * h * 0.6);
+        ctx.closePath();
+      }
+      ctx.fill();
+    } else if (kind === 'rapid') {
+      for (const oy of [-0.45, 0.25]) { ctx.moveTo(-s * 0.7, (oy + 0.4) * s); ctx.lineTo(0, oy * s - 0.2 * s); ctx.lineTo(s * 0.7, (oy + 0.4) * s); }
+      ctx.stroke();
+    } else if (kind === 'homing') {
+      ctx.arc(0, 0, s * 0.62, 0, TAU);
+      ctx.moveTo(0, -s); ctx.lineTo(0, -s * 0.3); ctx.moveTo(0, s); ctx.lineTo(0, s * 0.3);
+      ctx.moveTo(-s, 0); ctx.lineTo(-s * 0.3, 0); ctx.moveTo(s, 0); ctx.lineTo(s * 0.3, 0);
+      ctx.stroke();
+    } else if (kind === 'beam') {
+      ctx.lineWidth = s * 0.5; ctx.moveTo(0, -s * 0.85); ctx.lineTo(0, s * 0.85); ctx.stroke();
+    } else {
+      ctx.arc(0, 0, s * 0.85, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, s * 0.45, 0, TAU); ctx.fill();
+    }
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+  }
+
+  function drawDrop(d) {
+    const def = WEAPONS[d.kind], R = 17 * U, y = d.y + Math.sin(d.t * 4) * 3 * U;
+    const pulse = (d.t * 1.4) % 1;
+    ctx.strokeStyle = rgba(def.color, 0.7 * (1 - pulse));
+    ctx.lineWidth = 2 * U;
+    ctx.beginPath(); ctx.arc(d.x, y, R * (1.1 + pulse * 0.9), 0, TAU); ctx.stroke();
+    glow(d.x, y, R * 2.8, def.color, 0.75);
+    ctx.beginPath(); ctx.arc(d.x, y, R, 0, TAU);
+    ctx.fillStyle = def.color; ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5 * U; ctx.stroke();
+    ctx.save(); ctx.translate(d.x, y);
+    weaponIcon(d.kind, R * 0.55, '#0c0622');
     ctx.restore();
+    ctx.font = `700 ${11 * U}px "Chakra Petch", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(12,6,34,0.85)';
+    ctx.fillText(def.name.toUpperCase(), d.x + 1 * U, y + R + 15 * U);
+    ctx.fillStyle = def.color;
+    ctx.fillText(def.name.toUpperCase(), d.x, y + R + 14 * U);
   }
 
   function drawEnemy(e) {
@@ -1301,7 +1342,7 @@
     const d = diff();
     if (playing) {
       g.t += dt;
-      g.speed = U * (380 + 500 * d + 380 * late()) * (g.overdrive > 0 ? 1.4 : 1);
+      g.speed = U * (340 + 520 * d + 380 * late()) * (g.overdrive > 0 ? 1.4 : 1);
     }
     const scroll = g.speed * dt;
     bgScroll += scroll;
@@ -1791,7 +1832,7 @@
     ctx.fillText('DRAG ANYWHERE TO STEER', W / 2, H * 0.92);
     ctx.font = `700 ${12 * U}px "Chakra Petch", sans-serif`;
     ctx.fillStyle = COL.dim;
-    ctx.fillText('YOUR SHIP FIRES ON ITS OWN · GRAB ? BOXES', W / 2, H * 0.92 + 20 * U);
+    ctx.fillText('YOUR SHIP FIRES ON ITS OWN · GRAB WEAPON DROPS', W / 2, H * 0.92 + 20 * U);
     const hx = W / 2 + Math.sin(clock * 3) * 60 * U, hy = H * 0.92 - 34 * U;
     ctx.strokeStyle = COL.ink; ctx.lineWidth = 2 * U;
     ctx.beginPath(); ctx.arc(hx, hy, 10 * U, 0, TAU); ctx.stroke();
@@ -1828,7 +1869,7 @@
     ui.combo.style.transform = `scaleX(${clamp(g.comboT / 2.3, 0, 1).toFixed(3)})`;
     if (g.shards !== last.shards) { ui.shards.textContent = g.shards; last.shards = g.shards; }
     let label, fill, isBoss = false;
-    if (g.phase === 'run') { label = `Level ${g.level} · Boss ${g.stage + 1}/3`; fill = g.phaseT / g.runLen; }
+    if (g.phase === 'run') { label = `Level ${g.level} · Boss ahead`; fill = g.phaseT / g.runLen; }
     else if (g.phase === 'warn') { label = 'Warning'; fill = 1; isBoss = true; }
     else if (g.phase === 'boss' && boss) { label = boss.name; fill = boss.entering ? 1 - (boss.y - boss.ty) / (-140 * U - boss.ty) : boss.hp / boss.max; isBoss = true; }
     else { label = 'Boss down'; fill = 0; }
@@ -1888,7 +1929,7 @@
     $('overBest').textContent = save.best.toLocaleString('en-US');
     $('overShards').textContent = g.shards;
     $('overBosses').textContent = g.bosses;
-    $('overLevel').textContent = g.level + '-' + (g.stage + 1);
+    $('overLevel').textContent = 'Level ' + g.level;
     const rv = $('btnRevive');
     rv.hidden = g.revived;
     rv.disabled = save.coins < 50;
@@ -2062,5 +2103,8 @@
   requestAnimationFrame(frame);
 
   // test hook (harmless in production)
-  window.__rift = { get state() { return state.mode; }, get run() { return g; }, start: startRun };
+  window.__rift = {
+    get state() { return state.mode; }, get run() { return g; }, get boss() { return boss; }, start: startRun,
+    showcase() { DROP_POOL.forEach((k, i) => drops.push({ x: W * (0.14 + i * 0.18), y: H * 0.45 + (i % 2) * 70 * U, kind: k, t: i })); },
+  };
 })();
