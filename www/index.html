@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Rift Runner</title>
+<meta name="theme-color" content="#0c0622">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,700;1,700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game" aria-label="Rift Runner game field"></canvas>
+
+<div id="hud" hidden>
+  <div class="hud-side">
+    <div class="chip"><i class="gem"></i><span id="hudShards">0</span></div>
+    <div id="hudFx" class="fx"></div>
+  </div>
+  <div class="hud-mid">
+    <div id="hudScore">0</div>
+    <div id="hudMultWrap" class="mult" hidden>
+      <span id="hudMult">x2</span>
+      <span class="combo"><i id="hudCombo"></i></span>
+    </div>
+  </div>
+  <div class="hud-side right">
+    <button id="btnPause" class="icon-btn" aria-label="Pause"><span></span><span></span></button>
+  </div>
+</div>
+
+<section id="menu" class="screen">
+  <h1 class="logo"><span class="a">RIFT</span><span class="b">RUNNER</span></h1>
+  <p class="tag">Drag to steer. Skim past hazards to charge <b>Overdrive</b>.</p>
+  <div class="spacer"></div>
+  <div class="stats">
+    <div><span class="lbl">Best</span><b id="menuBest">0</b></div>
+    <div><span class="lbl">Shards</span><b><i class="gem"></i><span id="menuCoins">0</span></b></div>
+  </div>
+  <button id="btnPlay" class="btn primary">Play</button>
+  <div class="row">
+    <button id="btnSkins" class="btn">Skins</button>
+    <button id="btnSound" class="btn">Sound on</button>
+  </div>
+</section>
+
+<section id="over" class="screen" hidden>
+  <p class="eyebrow" id="overTitle">Run over</p>
+  <div class="big" id="overScore">0</div>
+  <p class="newbest" id="overNew" hidden>New best</p>
+  <dl class="results">
+    <div><dt>Best</dt><dd id="overBest">0</dd></div>
+    <div><dt>Shards</dt><dd id="overShards">0</dd></div>
+    <div><dt>Close calls</dt><dd id="overNear">0</dd></div>
+    <div><dt>Time</dt><dd id="overTime">0s</dd></div>
+  </dl>
+  <div class="spacer"></div>
+  <button id="btnRevive" class="btn ghost">Revive for 50 <i class="gem"></i></button>
+  <button id="btnRetry" class="btn primary">Run again</button>
+  <div class="row">
+    <button id="btnHome" class="btn">Menu</button>
+    <button id="btnSkins2" class="btn">Skins</button>
+  </div>
+</section>
+
+<section id="pause" class="screen dim" hidden>
+  <p class="eyebrow">Paused</p>
+  <div class="spacer"></div>
+  <button id="btnResume" class="btn primary">Resume</button>
+  <button id="btnQuit" class="btn">End run</button>
+</section>
+
+<section id="shop" class="screen dim" hidden>
+  <p class="eyebrow">Skins</p>
+  <p class="wallet"><i class="gem"></i><span id="shopCoins">0</span></p>
+  <div id="skinGrid" class="skins"></div>
+  <div class="spacer"></div>
+  <button id="btnShopBack" class="btn">Back</button>
+</section>
+
+<script src="game.js"></script>
+</body>
+</html>

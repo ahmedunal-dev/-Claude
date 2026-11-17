@@ -1,0 +1,10 @@
+{
+  "name": "Rift Runner",
+  "short_name": "Rift Runner",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#0c0622",
+  "theme_color": "#0c0622",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
