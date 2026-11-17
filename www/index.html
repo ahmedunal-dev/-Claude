@@ -42,15 +42,16 @@
 
 <section id="menu" class="screen">
   <h1 class="logo"><span class="a">RIFT</span><span class="b">RUNNER</span></h1>
-  <p class="tag">Dodge, shoot, collect <b>upgrades</b> for your gun and beat the boss of every level.</p>
+  <p class="tag">Dodge, shoot, <b>upgrade your gun</b> and beat the boss of every level.</p>
   <div class="spacer"></div>
   <div class="stats">
     <div><span class="lbl">Stars</span><b><i class="star on"></i><span id="menuStars">0</span></b></div>
     <div><span class="lbl">Shards</span><b><i class="gem"></i><span id="menuCoins">0</span></b></div>
   </div>
   <button id="btnPlay" class="btn primary">Play</button>
-  <div class="row">
+  <div class="row three">
     <button id="btnLevels" class="btn">Levels</button>
+    <button id="btnArmory" class="btn">Upgrades</button>
     <button id="btnSkins" class="btn">Skins</button>
   </div>
   <button id="btnSound" class="link-btn">Sound on</button>
@@ -70,8 +71,9 @@
   <div class="spacer"></div>
   <button id="btnRevive" class="btn ghost">Revive for 50 <i class="gem"></i></button>
   <button id="btnRetry" class="btn primary">Try again</button>
-  <div class="row">
+  <div class="row three">
     <button id="btnHome" class="btn">Levels</button>
+    <button id="btnArmory2" class="btn">Upgrades</button>
     <button id="btnSkins2" class="btn">Skins</button>
   </div>
 </section>
@@ -92,9 +94,10 @@
   <ul class="goals" id="clearGoals"></ul>
   <div class="spacer"></div>
   <button id="btnNext" class="btn primary">Next level</button>
-  <div class="row">
+  <div class="row three">
     <button id="btnReplay" class="btn">Replay</button>
     <button id="btnLevels2" class="btn">Levels</button>
+    <button id="btnArmory3" class="btn">Upgrades</button>
   </div>
 </section>
 
@@ -104,6 +107,15 @@
   <div id="levelGrid" class="levels"></div>
   <div class="spacer"></div>
   <button id="btnLevelsBack" class="btn">Back</button>
+</section>
+
+<section id="armory" class="screen dim" hidden>
+  <p class="eyebrow">Upgrades</p>
+  <p class="wallet"><i class="gem"></i><span id="armoryCoins">0</span></p>
+  <p class="hint">Permanent upgrades for your gun. Drops in a level add a 10-second boost of +2 on top.</p>
+  <div id="armoryList" class="armory"></div>
+  <div class="spacer"></div>
+  <button id="btnArmoryBack" class="btn">Back</button>
 </section>
 
 <section id="shop" class="screen dim" hidden>

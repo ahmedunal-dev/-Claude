@@ -73,6 +73,7 @@
     set(k, v) { try { localStorage.setItem('riftrunner_' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
   };
   const save = Object.assign({ best: 0, coins: 0, owned: [0], skin: 0, muted: false, games: 0, unlocked: 1, lv: {} }, store.get('save', {}));
+  save.gun = Object.assign({ spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 }, save.gun);
   const persist = () => store.set('save', save);
 
   const SKINS = [
@@ -309,7 +310,7 @@
       tutorial: n === 1 && save.games < 3 ? 4 : 0, dying: 0, banner: null,
       level: n, phase: 'run', phaseT: 0, runLen: lv.len, rt: 0,
       enemyT: 2.5, dropT: 6.01, fireT: 0, homT: 0, beam: null,
-      ups: { spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 },
+      buff: { spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 },
       kills: 0, bosses: 0, runSpawned: 0, runKills: 0,
     };
     resetCombat();
@@ -614,8 +615,9 @@
   // ---------- combat: weapons, enemies, weapon drops, bosses ----------
   // =====================================================================
   // Each level: dodge obstacles and shoot enemies, then one boss.
-  // Enemies drop upgrades. There is one gun; each of the five upgrade types
-  // improves it in its own way and stacks up to UP_MAX within the level.
+  // One gun with five upgrade tracks. Levels are bought permanently in the
+  // Upgrades menu (save.gun); drops in a level only give a timed buff that
+  // adds BUFF_BONUS levels to one track for BUFF_TIME seconds.
   const enemies = [], ebullets = [], pbullets = [], drops = [];
   let boss = null;
 
@@ -627,10 +629,28 @@
     beam: { name: 'Beam', color: '#c08cff', what: 'laser beam' },
     plasma: { name: 'Plasma', color: '#7dff5a', what: 'more damage' },
   };
-  const UP_MAX = 5;
+  const UP_MAX = 5, BUFF_BONUS = 2, BUFF_TIME = 10;
+  const UP_COST = [60, 150, 300, 550, 900];
   const DROP_POOL = ['spread', 'rapid', 'homing', 'beam', 'plasma'];
   const DROP_CHANCE = { drone: 0.2, diver: 0.35, gunner: 0.8 };
-  const gunLevel = () => 1 + DROP_POOL.reduce((a, k) => a + g.ups[k], 0);
+  const HOMING_N = [0, 1, 2, 2, 3, 4, 4, 5];
+  // permanent level plus an active buff
+  function effUps() {
+    const u = {};
+    for (const k of DROP_POOL) u[k] = save.gun[k] + (g && g.buff[k] > 0 ? BUFF_BONUS : 0);
+    return u;
+  }
+  const gunLevel = () => { const u = effUps(); return 1 + DROP_POOL.reduce((a, k) => a + u[k], 0); };
+  const permGunLevel = () => 1 + DROP_POOL.reduce((a, k) => a + save.gun[k], 0);
+  // what one level of each track does, for the Upgrades menu
+  const fireRate = (l) => (1 / 0.18) * (1 + 0.24 * l);
+  const UP_TEXT = {
+    spread: (l) => `${1 + l} shot${l ? 's' : ''} per volley`,
+    rapid: (l) => `${fireRate(l).toFixed(1)} volleys per second`,
+    homing: (l) => (l ? `${HOMING_N[l]} missile${HOMING_N[l] > 1 ? 's' : ''} every ${(1.25 - 0.13 * l).toFixed(1)} s` : 'No missiles yet'),
+    beam: (l) => (l ? `Laser beam, ${2 + 2.5 * l} damage/s` : 'No laser beam yet'),
+    plasma: (l) => (l ? `+${30 * l}% damage${l >= 3 ? ', piercing shots' : ''}` : 'Base damage'),
+  };
 
   const ENEMY = {
     drone: { color: '#ff5a5a', hp: 2, r: 14, pts: 30 },
@@ -677,7 +697,7 @@
 
   // One gun, shaped by the upgrades collected this level.
   function fireWeapon(rdt, list, c1) {
-    const u = g.ups, od = g.overdrive > 0 ? 1.6 : 1;
+    const u = effUps(), od = g.overdrive > 0 ? 1.6 : 1;
     // Beam: a continuous laser on top of the gun, wider and hotter per level
     if (u.beam > 0) {
       const bw = (3 + 2 * u.beam) * U;
@@ -691,8 +711,8 @@
     if (u.homing > 0) {
       g.homT -= rdt;
       if (g.homT <= 0) {
-        g.homT = 1.25 - 0.13 * u.homing;
-        const n = [0, 1, 2, 2, 3, 4][u.homing];
+        g.homT = Math.max(0.45, 1.25 - 0.13 * u.homing);
+        const n = HOMING_N[Math.min(u.homing, HOMING_N.length - 1)];
         for (let i = 0; i < n; i++) {
           const k = i - (n - 1) / 2;
           pbullets.push({ x: P.x + k * 14 * U, y: P.y, vx: (k || (i % 2 ? 1 : -1) * 0.5) * 320 * U, vy: -380 * U, dmg: 2 * od, r: 5 * U, kind: 'missile', color: UPGRADES.homing.color, life: 2.4 });
@@ -750,23 +770,16 @@
     else if (t.hp <= 0 && !t.dead) killEnemy(t, true);
   }
 
-  function dropUpgrade(x, y) {
+  function dropBuff(x, y) {
     g.dropT = 0;
-    const open = DROP_POOL.filter((k) => g.ups[k] < UP_MAX);
-    drops.push({ x: clamp(x, 30 * U, W - 30 * U), y, kind: pick(open.length ? open : DROP_POOL), t: 0 });
+    drops.push({ x: clamp(x, 30 * U, W - 30 * U), y, kind: pick(DROP_POOL), t: 0 });
   }
 
-  function pickUpgrade(d) {
+  function pickBuff(d) {
     const def = UPGRADES[d.kind];
-    if (g.ups[d.kind] < UP_MAX) {
-      g.ups[d.kind]++;
-      floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' ' + g.ups[d.kind] + '/' + UP_MAX, def.color, 22);
-      floatText(d.x, d.y - 8 * U, def.what, COL.ink, 13);
-    } else {
-      const pts = 250 * g.mult;
-      g.score += pts;
-      floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' MAX +' + pts, def.color, 20);
-    }
+    g.buff[d.kind] = BUFF_TIME;
+    floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' BOOST', def.color, 22);
+    floatText(d.x, d.y - 8 * U, '+' + BUFF_BONUS + ' for ' + BUFF_TIME + 's', COL.ink, 13);
     burst(d.x, d.y, 30, def.color, 360, 3, 0.7);
     flash = 0.3; flashColor = def.color;
     Sound.pickup();
@@ -809,7 +822,7 @@
     const n = e.kind === 'gunner' ? 3 : e.kind === 'diver' ? 2 : 1;
     for (let i = 0; i < n; i++) addShard(e.x + rand(-14, 14) * U, e.y + rand(-10, 10) * U);
     // drops only before the boss; a dry spell guarantees the next one
-    if (g.phase === 'run' && (Math.random() < DROP_CHANCE[e.kind] || g.dropT > 6)) dropUpgrade(e.x, e.y);
+    if ((g.phase === 'run' || g.phase === 'boss') && (Math.random() < DROP_CHANCE[e.kind] || g.dropT > 6)) dropBuff(e.x, e.y);
   }
 
   function eshot(x, y, ang, speed, o = {}) {
@@ -1074,20 +1087,25 @@
   function updateCombat(dt, rdt, playing, c1) {
     if (playing) {
       g.phaseT += dt;
+      for (const k of DROP_POOL) if (g.buff[k] > 0) g.buff[k] = Math.max(0, g.buff[k] - rdt);
       if (g.phase === 'run') {
         g.rt += dt;
         g.enemyT -= dt;
         if (g.enemyT <= 0) { spawnEnemy(); g.enemyT = LV().foeEvery * rand(0.8, 1.2); }
         g.dropT += dt;
-        // nobody shot anything for a while: an upgrade floats in anyway
-        if (g.dropT > 11) dropUpgrade(rand(W * 0.2, W * 0.8), -30 * U);
+        // nobody shot anything for a while: a buff floats in anyway
+        if (g.dropT > 11) dropBuff(rand(W * 0.2, W * 0.8), -30 * U);
         if (g.phaseT >= g.runLen) {
           g.phase = 'warn'; g.phaseT = 0;
           banner('WARNING', COL.hazard, 'boss approaching');
           Sound.alarm();
         }
       } else if (g.phase === 'warn') {
-        if (g.phaseT > 3.2) { g.phase = 'boss'; g.phaseT = 0; spawnBoss(); }
+        if (g.phaseT > 3.2) { g.phase = 'boss'; g.phaseT = 0; g.dropT = 4; spawnBoss(); }
+      } else if (g.phase === 'boss') {
+        // buffs keep coming during the fight so it never stalls
+        g.dropT += dt;
+        if (g.dropT > 9 && boss && boss.vulnerable) dropBuff(rand(W * 0.2, W * 0.8), H * 0.32);
       } else if (g.phase === 'clear') {
         if (g.phaseT > 2.8 && !boss) levelComplete();
       }
@@ -1102,7 +1120,7 @@
     if (!updateEnemyBullets(dt, playing)) return false;
     for (const d of drops) {
       d.y += (g.speed * 0.3 + 60 * U) * dt; d.t += dt;
-      if (playing && Math.hypot(P.x - d.x, P.y - d.y) < P.r + 24 * U) { d.dead = true; pickUpgrade(d); continue; }
+      if (playing && Math.hypot(P.x - d.x, P.y - d.y) < P.r + 24 * U) { d.dead = true; pickBuff(d); continue; }
       if (d.y > H + 40 * U) d.dead = true;
     }
     compact(drops);
@@ -1154,42 +1172,42 @@
   }
 
   // One icon per weapon. Used on drops and repeated in the pickup text colour.
-  function weaponIcon(kind, s, col) {
-    ctx.strokeStyle = col; ctx.fillStyle = col;
-    ctx.lineWidth = 2.6 * U; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
+  function weaponIcon(c, kind, s, col) {
+    c.strokeStyle = col; c.fillStyle = col;
+    c.lineWidth = 2.6 * U; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
     if (kind === 'spread') {
       // three full arrows fanning upward from one point
       const px = 0, py = s * 0.9;
       for (const a of [-0.6, 0, 0.6]) {
         const dx = Math.sin(a), dy = -Math.cos(a);
-        ctx.moveTo(px + dx * s * 0.2, py + dy * s * 0.2); ctx.lineTo(px + dx * s * 1.25, py + dy * s * 1.25);
+        c.moveTo(px + dx * s * 0.2, py + dy * s * 0.2); c.lineTo(px + dx * s * 1.25, py + dy * s * 1.25);
       }
-      ctx.stroke();
-      ctx.beginPath();
+      c.stroke();
+      c.beginPath();
       for (const a of [-0.6, 0, 0.6]) {
         const dx = Math.sin(a), dy = -Math.cos(a), tx = px + dx * s * 1.75, ty = py + dy * s * 1.75, h = s * 0.55;
-        ctx.moveTo(tx, ty);
-        ctx.lineTo(tx - dx * h - dy * h * 0.6, ty - dy * h + dx * h * 0.6);
-        ctx.lineTo(tx - dx * h + dy * h * 0.6, ty - dy * h - dx * h * 0.6);
-        ctx.closePath();
+        c.moveTo(tx, ty);
+        c.lineTo(tx - dx * h - dy * h * 0.6, ty - dy * h + dx * h * 0.6);
+        c.lineTo(tx - dx * h + dy * h * 0.6, ty - dy * h - dx * h * 0.6);
+        c.closePath();
       }
-      ctx.fill();
+      c.fill();
     } else if (kind === 'rapid') {
-      for (const oy of [-0.45, 0.25]) { ctx.moveTo(-s * 0.7, (oy + 0.4) * s); ctx.lineTo(0, oy * s - 0.2 * s); ctx.lineTo(s * 0.7, (oy + 0.4) * s); }
-      ctx.stroke();
+      for (const oy of [-0.45, 0.25]) { c.moveTo(-s * 0.7, (oy + 0.4) * s); c.lineTo(0, oy * s - 0.2 * s); c.lineTo(s * 0.7, (oy + 0.4) * s); }
+      c.stroke();
     } else if (kind === 'homing') {
-      ctx.arc(0, 0, s * 0.62, 0, TAU);
-      ctx.moveTo(0, -s); ctx.lineTo(0, -s * 0.3); ctx.moveTo(0, s); ctx.lineTo(0, s * 0.3);
-      ctx.moveTo(-s, 0); ctx.lineTo(-s * 0.3, 0); ctx.moveTo(s, 0); ctx.lineTo(s * 0.3, 0);
-      ctx.stroke();
+      c.arc(0, 0, s * 0.62, 0, TAU);
+      c.moveTo(0, -s); c.lineTo(0, -s * 0.3); c.moveTo(0, s); c.lineTo(0, s * 0.3);
+      c.moveTo(-s, 0); c.lineTo(-s * 0.3, 0); c.moveTo(s, 0); c.lineTo(s * 0.3, 0);
+      c.stroke();
     } else if (kind === 'beam') {
-      ctx.lineWidth = s * 0.5; ctx.moveTo(0, -s * 0.85); ctx.lineTo(0, s * 0.85); ctx.stroke();
+      c.lineWidth = s * 0.5; c.moveTo(0, -s * 0.85); c.lineTo(0, s * 0.85); c.stroke();
     } else {
-      ctx.arc(0, 0, s * 0.85, 0, TAU); ctx.stroke();
-      ctx.beginPath(); ctx.arc(0, 0, s * 0.45, 0, TAU); ctx.fill();
+      c.arc(0, 0, s * 0.85, 0, TAU); c.stroke();
+      c.beginPath(); c.arc(0, 0, s * 0.45, 0, TAU); c.fill();
     }
-    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    c.lineCap = 'butt'; c.lineJoin = 'miter';
   }
 
   function drawDrop(d) {
@@ -1203,7 +1221,7 @@
     ctx.fillStyle = def.color; ctx.fill();
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5 * U; ctx.stroke();
     ctx.save(); ctx.translate(d.x, y);
-    weaponIcon(d.kind, R * 0.55, '#0c0622');
+    weaponIcon(ctx, d.kind, R * 0.55, '#0c0622');
     ctx.restore();
     ctx.font = `700 ${11 * U}px "Chakra Petch", sans-serif`;
     ctx.textAlign = 'center';
@@ -1845,7 +1863,7 @@
     ctx.fillText('DRAG ANYWHERE TO STEER', W / 2, H * 0.92);
     ctx.font = `700 ${12 * U}px "Chakra Petch", sans-serif`;
     ctx.fillStyle = COL.dim;
-    ctx.fillText('YOUR SHIP FIRES ON ITS OWN · GRAB WEAPON DROPS', W / 2, H * 0.92 + 20 * U);
+    ctx.fillText('YOUR SHIP FIRES ON ITS OWN · GRAB BOOSTS', W / 2, H * 0.92 + 20 * U);
     const hx = W / 2 + Math.sin(clock * 3) * 60 * U, hy = H * 0.92 - 34 * U;
     ctx.strokeStyle = COL.ink; ctx.lineWidth = 2 * U;
     ctx.beginPath(); ctx.arc(hx, hy, 10 * U, 0, TAU); ctx.stroke();
@@ -1859,9 +1877,9 @@
     hud: $('hud'), score: $('hudScore'), multWrap: $('hudMultWrap'), mult: $('hudMult'), combo: $('hudCombo'),
     shards: $('hudShards'), fx: $('hudFx'), weapon: $('hudWeapon'), ups: $('hudUps'),
     bar: $('hudBar'), barLabel: $('hudBarLabel'), barFill: $('hudBarFill'),
-    menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'), clear: $('clear'), levels: $('levels'),
+    menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'), clear: $('clear'), levels: $('levels'), armory: $('armory'),
   };
-  const screens = ['menu', 'over', 'pause', 'shop', 'clear', 'levels'];
+  const screens = ['menu', 'over', 'pause', 'shop', 'clear', 'levels', 'armory'];
   // five mini bars in the HUD, one per upgrade type
   const upBars = {};
   for (const k of DROP_POOL) {
@@ -1896,13 +1914,17 @@
     if (label !== last.bar) { ui.barLabel.textContent = label; last.bar = label; }
     if (isBoss !== last.barBoss) { ui.bar.classList.toggle('boss', isBoss); last.barBoss = isBoss; }
     ui.barFill.style.transform = `scaleX(${clamp(fill, 0, 1).toFixed(3)})`;
-    const wk = DROP_POOL.map((k) => g.ups[k]).join('');
+    const eu = effUps(), wk = DROP_POOL.map((k) => eu[k]).join('');
     if (wk !== last.weapon) {
       ui.weapon.textContent = 'Gun Lv ' + gunLevel();
-      for (const k of DROP_POOL) upBars[k].style.height = (g.ups[k] / UP_MAX) * 100 + '%';
+      for (const k of DROP_POOL) {
+        upBars[k].style.height = (eu[k] / (UP_MAX + BUFF_BONUS)) * 100 + '%';
+        upBars[k].parentNode.classList.toggle('boosted', g.buff[k] > 0);
+      }
       last.weapon = wk;
     }
     const fx = [];
+    for (const k of DROP_POOL) if (g.buff[k] > 0) fx.push([UPGRADES[k].color, UPGRADES[k].name + ' +' + BUFF_BONUS + ' ' + Math.ceil(g.buff[k]) + 's']);
     if (g.overdrive > 0) fx.push(['#ffffff', 'Overdrive ' + Math.ceil(g.overdrive)]);
     if (g.shield) fx.push([COL.shield, 'Shield']);
     if (g.magnet > 0) fx.push([COL.magnet, 'Magnet ' + Math.ceil(g.magnet)]);
@@ -1992,6 +2014,69 @@
     show('clear');
   }
 
+  // ---- permanent gun upgrades ----
+  let armoryReturn = 'menu';
+  function openArmory(from) {
+    armoryReturn = from;
+    if (from === 'menu') state.mode = 'shop';
+    buildArmory();
+    show('armory');
+  }
+  function closeArmory() {
+    if (armoryReturn === 'over') { show('over'); $('btnRevive').disabled = save.coins < 50; }
+    else if (armoryReturn === 'clear') show('clear');
+    else { state.mode = 'menu'; refreshMenu(); show('menu'); }
+  }
+  function buildArmory() {
+    $('armoryCoins').textContent = save.coins.toLocaleString('en-US');
+    const list = $('armoryList');
+    list.innerHTML = '';
+    for (const k of DROP_POOL) {
+      const def = UPGRADES[k], l = save.gun[k], maxed = l >= UP_MAX, cost = maxed ? 0 : UP_COST[l];
+      const card = document.createElement('div');
+      card.className = 'up-card';
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 104;
+      const c = cv.getContext('2d');
+      c.setTransform(2, 0, 0, 2, 0, 0);
+      c.beginPath(); c.arc(26, 26, 20, 0, TAU); c.fillStyle = def.color; c.fill();
+      c.strokeStyle = '#ffffff'; c.lineWidth = 2.5; c.stroke();
+      c.translate(26, 26);
+      weaponIcon(c, k, 11, '#0c0622');
+      const info = document.createElement('div');
+      info.className = 'up-info';
+      const name = document.createElement('b');
+      name.textContent = def.name; name.style.color = def.color;
+      const pips = document.createElement('span');
+      pips.className = 'pips'; pips.style.color = def.color;
+      for (let i = 0; i < UP_MAX; i++) { const e = document.createElement('i'); if (i < l) e.className = 'on'; pips.appendChild(e); }
+      const txt = document.createElement('small');
+      txt.textContent = UP_TEXT[k](l);
+      if (!maxed) { const nx = document.createElement('em'); nx.textContent = ' → ' + UP_TEXT[k](l + 1); txt.append(document.createElement('br'), nx); }
+      info.append(name, pips, txt);
+      const buy = document.createElement('button');
+      buy.className = 'buy';
+      if (maxed) { buy.textContent = 'Max'; buy.disabled = true; }
+      else {
+        buy.innerHTML = '<i class="gem"></i>';
+        buy.append(String(cost));
+        buy.disabled = save.coins < cost;
+        buy.setAttribute('aria-label', `Upgrade ${def.name} to level ${l + 1} for ${cost} shards`);
+        buy.addEventListener('click', () => {
+          if (save.coins < cost || save.gun[k] >= UP_MAX) return;
+          save.coins -= cost;
+          save.gun[k]++;
+          persist();
+          Sound.buy();
+          haptic('medium');
+          buildArmory();
+        });
+      }
+      card.append(cv, info, buy);
+      list.appendChild(card);
+    }
+  }
+
   function openLevels() {
     clearRun();
     state.mode = 'levels';
@@ -2033,7 +2118,7 @@
     $('overName').textContent = LV().name;
     $('overBest').textContent = lvSave(g.level).best ? lvSave(g.level).best.toLocaleString('en-US') : '–';
     $('overShards').textContent = g.shards;
-    $('overGun').textContent = 'Lv ' + gunLevel();
+    $('overGun').textContent = 'Lv ' + permGunLevel();
     $('overReach').textContent = g.phase === 'run' ? Math.floor((g.phaseT / g.runLen) * 100) + '%' : 'Boss';
     const rv = $('btnRevive');
     rv.hidden = g.revived;
@@ -2179,6 +2264,10 @@
   $('btnLevels').addEventListener('click', () => { Sound.init(); Sound.click(); openLevels(); });
   $('btnLevels2').addEventListener('click', () => { Sound.click(); openLevels(); });
   $('btnLevelsBack').addEventListener('click', () => { Sound.click(); goMenu(); });
+  $('btnArmory').addEventListener('click', () => { Sound.init(); Sound.click(); openArmory('menu'); });
+  $('btnArmory2').addEventListener('click', () => { Sound.click(); openArmory('over'); });
+  $('btnArmory3').addEventListener('click', () => { Sound.click(); openArmory('clear'); });
+  $('btnArmoryBack').addEventListener('click', () => { Sound.click(); closeArmory(); });
   $('btnNext').addEventListener('click', () => startLevel(Math.min(g.level + 1, LEVELS.length)));
   $('btnReplay').addEventListener('click', () => startLevel(g.level));
   $('btnSkins').addEventListener('click', () => { Sound.init(); Sound.click(); openShop('menu'); });
@@ -2214,6 +2303,7 @@
   window.__rift = {
     get state() { return state.mode; }, get run() { return g; }, get boss() { return boss; }, start: (n) => startLevel(n || 1),
     unlockAll() { save.unlocked = LEVELS.length; persist(); },
+    give(n) { save.coins += n; persist(); },
     aimTarget() { const d = drops[0]; if (d && d.y > H * 0.3) return d.x; if (boss) return boss.x; const e = enemies.find((q) => !q.dead && q.y > 0); return e ? e.x : null; },
     steer(x) { P.tx = x; },
     showcase() { DROP_POOL.forEach((k, i) => drops.push({ x: W * (0.14 + i * 0.18), y: H * 0.45 + (i % 2) * 70 * U, kind: k, t: i })); },
