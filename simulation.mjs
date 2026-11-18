@@ -20,7 +20,7 @@ export const UPGRADES = {
   charge: {name:'Hızlı Şarj',      text:'Atılma bekleme süresi −%18.',             icon:'↻', max:3},
   blade:  {name:'Geniş Kıvılcım',  text:'Atılırken vuruş alanın büyür.',            icon:'◎', max:3},
   pierce: {name:'Delici Sektirme', text:'Geri sektirdiğin mermi bir düşman daha deler.', icon:'➶', max:2},
-  fork:   {name:'Çatallanma',      text:'Sektirilen mermi başka bir düşmana da kopyalanır.', icon:'⑂', max:2},
+  fork:   {name:'Çatallanma',      text:'Sektirilen mermi başka bir düşmana da kopyalanır (yarım hasar).', icon:'⑂', max:2},
   shock:  {name:'Şok Dalgası',     text:'Atılmanın sonunda çevrene hasar verirsin.', icon:'✺', max:2},
   shield: {name:'Enerji Kalkanı',  text:'Her dalgada bir darbeyi emer.',            icon:'◆', max:2},
   heart:  {name:'Ekstra Can',      text:'+1 maksimum can ve tam iyileşme.',         icon:'♥', max:2},
@@ -35,6 +35,18 @@ export function createArena(height=500, random=Math.random) {
   return game;
 }
 const level = (game,id) => game.taken[id]||0;
+// Difficulty climbs every wave with no ceiling: steeply for the first waves, then steadily.
+export const speedBoost = wave => Math.min(3.1, 1+.078*Math.min(wave-1,8)+.035*Math.max(0,wave-9))+.008*Math.max(0,wave-51);
+// From wave 20 on, an "overdrive" keeps raising HP and fire rate forever.
+const overdrive = wave => Math.max(0,wave-20);
+const fireRate = wave => 1+overdrive(wave)*.03;
+const armorChance = wave => Math.min(.8,Math.max(0,(wave-8)*.08));
+const heavyChance = wave => Math.min(.95,Math.max(0,(wave-19)*.035));
+const shooterSpread = wave => wave>=28?5:wave>=16?3:1;
+// New threats get announced the first time they show up.
+const NEWS = {4:'YENİ: HÜCUMCU', 5:'YENİ: BÖLÜNEN', 7:'YENİ: BOMBACI', 9:'ÇİFT BOSS', 10:'ZIRHLI DÜŞMANLAR', 16:'ÜÇLÜ ATIŞ',
+  18:'ARTIK HEP ÇİFT BOSS', 20:'AĞIR ZIRH', 28:'BEŞLİ ATIŞ'};
+export const waveNews = wave => NEWS[wave] || (wave>28&&wave%10===0?'TEHLİKE ARTIYOR':'');
 export const dashReach = game => 325*(1+.2*level(game,'reach'));
 export const dashCooldown = game => DASH_COOLDOWN*Math.pow(.82,level(game,'charge'));
 export const comboTime = game => COMBO_TIME+.8*level(game,'chain');
@@ -50,15 +62,28 @@ export function resizeArena(game, height) {
 }
 function enemy(game,kind,x,y,warm) {
   const data=stats[kind];
-  const extra=kind==='boss'?Math.floor((game.wave-3)/3):kind==='charger'&&game.wave>=12?1:0;
+  const w=game.wave;
+  let armor=0;
+  if (kind!=='boss'&&kind!=='mini') {
+    if (game.random()<armorChance(w)) armor++;
+    if (game.random()<heavyChance(w)) armor++;
+  }
+  const extra=(kind==='boss'?Math.floor((w-3)/3)+Math.floor(Math.max(0,w-15)/5):armor)+(kind==='mini'?0:Math.floor(overdrive(w)/3));
   const body={kind,...data,x:clamp(x,data.r+17,WIDTH-data.r-17),y:clamp(y,data.r+17,game.height-data.r-17),warm,
-    hp:data.hp+extra, timer:kind==='shooter'?.84+game.random()*.2:kind==='boss'?1.15:1.65, angle:0, hurt:0, spin:0};
+    hp:data.hp+extra, armor, value:Math.round(data.value*(1+.5*armor)), timer:kind==='shooter'?.84+game.random()*.2:kind==='boss'?1.15:1.65, angle:0, hurt:0, spin:0};
   body.maxHp=body.hp;
+  body.warm*=Math.max(.55,1-Math.max(0,w-10)*.015);
   game.enemies.push(body);
   return body;
 }
 function kindFor(game,i) {
   const w=game.wave;
+  if (w>=10) {
+    // Later waves draw from a pool that leans harder on the dangerous kinds.
+    const pool=[['chaser',3],['shooter',2+Math.min(2,w/15)],['charger',1.5+w/15],['splitter',1.2],['bomber',1+w/12]];
+    let roll=game.random()*pool.reduce((n,[,v])=>n+v,0);
+    for (const [kind,v] of pool) if ((roll-=v)<0) return kind;
+  }
   if (w>=7&&i%6===4) return 'bomber';
   if (w>=5&&i%5===2) return 'splitter';
   if (i%4===1) return 'shooter';
@@ -71,7 +96,7 @@ function beginWave(game) {
   game.flawless=true;
   game.p.shield=level(game,'shield');
   const h=game.height;
-  game.events.push({type:'wave',wave:game.wave});
+  game.events.push({type:'wave',wave:game.wave,news:waveNews(game.wave)});
   if (game.wave===1) {
     enemy(game,'chaser',WIDTH*.26,h*.41,.32);
     enemy(game,'chaser',WIDTH*.28,h*.56,.4);
@@ -81,12 +106,13 @@ function beginWave(game) {
   const bossWave=game.wave%3===0;
   if (bossWave) {
     const top=game.p.y>h*.5;
-    if (game.wave>=9 && game.wave%9===0) {
+    if (game.wave>=18 || game.wave%9===0) {
       enemy(game,'boss',WIDTH*.3,top?h*.22:h*.78,.65);
       enemy(game,'boss',WIDTH*.7,top?h*.22:h*.78,.85);
     } else enemy(game,'boss',WIDTH*.5,top?h*.21:h*.79,.65);
   }
-  const count=bossWave?Math.min(5,game.wave):Math.min(12,game.wave+3);
+  const w=game.wave;
+  const count=bossWave?Math.min(9,3+Math.floor(w/4)):Math.min(40,w<=9?w+3:w<=51?12+Math.floor((w-9)/2):33+Math.floor((w-51)/4));
   const offset=game.random()*Math.PI*2;
   for (let i=0;i<count;i++) {
     const direction=offset+i*Math.PI*2/count;
@@ -206,6 +232,7 @@ function movePlayer(game,dt) {
   game.events.push({type:'trail',from,to:{x:p.x,y:p.y}});
   const blade=bladeRadius(game);
   for (const e of [...game.enemies]) {
+    // Enemies still materialising can't be hit yet; they have to arrive first.
     if(e.hp<=0||dash.hit.has(e)||!rayHit(from,p,e.x,e.y,e.r+blade)) continue;
     dash.hit.add(e);
     hitEnemy(game,e,1);
@@ -258,7 +285,7 @@ function parry(game,b) {
     const other=nearestEnemy(game,b.x,b.y,used);
     if (!other) break;
     used.add(other);
-    const copy={x:b.x,y:b.y,vx:0,vy:0,owner:b.owner,ttl:1.5,friendly:true,pierce:b.pierce,hitSet:new Set()};
+    const copy={x:b.x,y:b.y,vx:0,vy:0,owner:b.owner,ttl:1.5,friendly:true,pierce:b.pierce,hitSet:new Set(),damage:1};
     steer(copy,other);
     game.bolts.push(copy);
   }
@@ -269,7 +296,7 @@ function shoot(game,e,angle,speed) {
 }
 function moveEnemies(game,dt) {
   const p=game.p;
-  const boost=1+Math.min(.64,(game.wave-1)*.078);
+  const boost=speedBoost(game.wave), w=game.wave;
   for (const e of game.enemies) {
     if(e.hp<=0) continue;
     e.hurt=Math.max(0,e.hurt-dt);
@@ -281,12 +308,12 @@ function moveEnemies(game,dt) {
     let speed=e.speed*boost;
     if(e.kind==='shooter') speed*=d>235?1:d<125?-.73:0;
     if(e.kind==='charger') {
-      if(e.timer<=0 && !e.rush) { e.rush=.32; e.timer=1.9; }
+      if(e.timer<=0 && !e.rush) { e.rush=.32; e.timer=Math.max(1.05,1.9-w*.03); }
       if(e.rush) { e.rush=Math.max(0,e.rush-dt); speed=420; }
       else if(e.timer<.37) speed=0;
     }
     if(e.kind==='bomber') {
-      if(e.fuse===undefined && d<78) { e.fuse=.95; game.events.push({type:'fuse',x:e.x,y:e.y}); }
+      if(e.fuse===undefined && d<78) { e.fuse=e.fuseMax=Math.max(.55,.95-w*.012); game.events.push({type:'fuse',x:e.x,y:e.y}); }
       if(e.fuse!==undefined) {
         speed=0;
         e.fuse-=dt;
@@ -296,15 +323,16 @@ function moveEnemies(game,dt) {
     if((e.kind==='shooter'||e.kind==='boss') && e.timer<=0) {
       if (e.kind==='boss') {
         const angry=e.hp<=e.maxHp/2;
-        const lanes=6+Math.min(4,Math.floor(game.wave/3));
+        const lanes=6+Math.min(10,Math.floor(w/3));
         const speedB=245+game.wave*4;
         e.spin+=angry?.33:0;
         for(let i=0;i<lanes;i++) shoot(game,e,e.angle+e.spin+i*Math.PI*2/lanes,speedB);
         if (angry) shoot(game,e,e.angle,speedB*1.25);
-        e.timer=Math.max(.7,1.52-game.wave*.035)*(angry?.78:1);
+        e.timer=Math.max(.5,1.52-w*.035)*(angry?.78:1)/fireRate(w);
       } else {
-        shoot(game,e,e.angle,Math.min(410,306+game.wave*8));
-        e.timer=Math.max(.76,1.58-game.wave*.055);
+        const shots=shooterSpread(w), bolt=Math.min(560,306+w*8);
+        for(let i=0;i<shots;i++) shoot(game,e,e.angle+(i-(shots-1)/2)*.24,bolt);
+        e.timer=Math.max(.45,1.58-w*.05)/fireRate(w);
       }
       game.events.push({type:'shot',x:e.x,y:e.y});
     }
@@ -337,7 +365,7 @@ function moveBolts(game,dt) {
       const target=game.enemies.find(e=>e.hp>0&&e.warm<=0&&!b.hitSet?.has(e)&&rayHit(from,b,e.x,e.y,e.r+6));
       if (!target) continue;
       b.hitSet?.add(target);
-      hitEnemy(game,target,2,true);
+      hitEnemy(game,target,b.damage||2,true);
       if (b.pierce>0) {
         b.pierce--;
         steer(b,nearestEnemy(game,b.x,b.y,b.hitSet)||{x:b.x+b.vx,y:b.y+b.vy});
@@ -385,7 +413,7 @@ export function tick(game,dt) {
     game.p.dash=null;
     game.buffer=null;
     game.events.push({type:'clear',wave:game.wave,bonus,perfect});
-    if(game.wave%2===0) game.pendingOffer=true;
+    if(game.wave<=20?game.wave%2===0:game.wave%3===0) game.pendingOffer=true;
   } else if(game.time>=game.nextWave) {
     if(game.pendingOffer) {
       game.pendingOffer=false;

@@ -250,7 +250,7 @@ function events() {
         break;
       case 'shot': tone(230,150,.14,.025,'square'); break;
       case 'wave':
-        notice(event.wave%3===0?'BOSS DALGASI':'DALGA '+String(event.wave).padStart(2,'0'),.73);
+        notice((event.wave%3===0?'BOSS DALGASI':'DALGA '+String(event.wave).padStart(2,'0'))+(event.news?' · '+event.news:''),event.news?1.3:.73);
         tone(170,320,.16,.057);
         tone(340,560,.17,.055,'triangle',.10);
         break;
@@ -336,8 +336,13 @@ function enemyDraw(e) {
     ctx.setLineDash([]);
     circle(x,y,r+8,color,2);
   }
+  if(e.armor&&warm<=0) {
+    ctx.setLineDash([5,4]);
+    circle(x,y,r+6,e.hp>1?'#e6e8d8':'#e6e8d855',e.armor>1?3:2);
+    ctx.setLineDash([]);
+  }
   if(kind==='bomber'&&e.fuse!==undefined) {
-    const t=Math.max(0,e.fuse)/.95;
+    const t=Math.max(0,e.fuse)/e.fuseMax;
     ctx.globalAlpha=.18+.25*(1-t);
     circle(x,y,88,null,1,'#ff5a3c');
     ctx.globalAlpha=1;
