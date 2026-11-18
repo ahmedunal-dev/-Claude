@@ -49,6 +49,7 @@
     <div><span class="lbl">Shards</span><b><i class="gem"></i><span id="menuCoins">0</span></b></div>
   </div>
   <button id="btnPlay" class="btn primary">Play</button>
+  <button id="btnSlots" class="btn ghost">Lucky Rift</button>
   <div class="row three">
     <button id="btnLevels" class="btn">Levels</button>
     <button id="btnArmory" class="btn">Upgrades</button>
@@ -93,6 +94,7 @@
   <p class="newbest" id="clearNew" hidden>New best</p>
   <ul class="goals" id="clearGoals"></ul>
   <div class="spacer"></div>
+  <button id="btnSpinNow" class="btn ghost" hidden>Free spin</button>
   <button id="btnNext" class="btn primary">Next level</button>
   <div class="row three">
     <button id="btnReplay" class="btn">Replay</button>
@@ -107,6 +109,27 @@
   <div id="levelGrid" class="levels"></div>
   <div class="spacer"></div>
   <button id="btnLevelsBack" class="btn">Back</button>
+</section>
+
+<section id="slots" class="screen dim" hidden>
+  <p class="eyebrow">Lucky Rift</p>
+  <p class="wallet"><i class="gem"></i><span id="slotsCoins">0</span></p>
+  <div class="machine"><canvas id="slotCanvas" aria-label="Slot machine, tap to spin"></canvas></div>
+  <p class="slot-msg" id="slotMsg">Match the middle row</p>
+  <button id="btnSpin" class="btn primary">Spin</button>
+  <p class="ticket" id="slotTicket" hidden></p>
+  <dl class="paytable">
+    <div><dt><b class="seven">7 7 7</b></dt><dd>1000</dd></div>
+    <div><dt><i class="gem"></i><i class="gem"></i><i class="gem"></i></dt><dd>300</dd></div>
+    <div><dt>3 same weapons</dt><dd>150 + ticket</dd></div>
+    <div><dt><b class="seven">7 7</b></dt><dd>150</dd></div>
+    <div><dt><i class="gem"></i><i class="gem"></i></dt><dd>70</dd></div>
+    <div><dt>2 same weapons</dt><dd>40</dd></div>
+    <div><dt><b class="seven">7</b></dt><dd>20</dd></div>
+  </dl>
+  <p class="hint">Played with shards you earn in the game. Every level you clear gives a free spin. A ticket starts your next level with that weapon for 20 seconds.</p>
+  <div class="spacer"></div>
+  <button id="btnSlotsBack" class="btn">Back</button>
 </section>
 
 <section id="armory" class="screen dim" hidden>

@@ -73,6 +73,8 @@
     set(k, v) { try { localStorage.setItem('riftrunner_' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
   };
   const save = Object.assign({ best: 0, coins: 0, owned: [0], skin: 0, muted: false, games: 0, unlocked: 1, lv: {} }, store.get('save', {}));
+  if (typeof save.freeSpins !== 'number') save.freeSpins = 0;
+  if (save.ticket === undefined) save.ticket = null;
   save.gun = Object.assign({ standard: 0, spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 }, save.gun);
   const persist = () => store.set('save', save);
 
@@ -224,6 +226,17 @@
       },
       zone() { [0, 5, 7, 12, 17].forEach((s, i) => tone(mtof(69 + s), 0.14, { type: 'triangle', vol: 0.1, at: i * 0.06 })); },
       click() { tone(700, 0.04, { type: 'square', vol: 0.05 }); },
+      lever() { noise(0.25, { type: 'bandpass', freq: 500, to: 1800, q: 3, vol: 0.2 }); tone(160, 0.18, { type: 'square', to: 90, vol: 0.06 }); },
+      tick() { if (limit('tick', 0.035)) tone(2200, 0.015, { type: 'square', vol: 0.025 }); },
+      reelStop() { noise(0.08, { freq: 900, vol: 0.25 }); tone(140, 0.1, { type: 'triangle', vol: 0.18 }); },
+      tease() { for (let i = 0; i < 6; i++) tone(mtof(76 + i), 0.09, { type: 'square', vol: 0.03, at: i * 0.12 }); },
+      lose() { tone(220, 0.25, { type: 'triangle', to: 150, vol: 0.1 }); },
+      win(tier) {
+        const run = tier >= 3 ? [0, 4, 7, 12, 16, 19, 24, 28, 31, 36] : tier === 2 ? [0, 4, 7, 12, 16, 19, 24] : [0, 4, 7, 12];
+        run.forEach((st, i) => tone(mtof(72 + st), 0.14, { type: 'square', vol: 0.06, at: i * 0.07 }));
+        run.forEach((st, i) => tone(mtof(84 + st), 0.1, { type: 'triangle', vol: 0.05, at: i * 0.07 + 0.03 }));
+        if (tier >= 2) for (let i = 0; i < 14; i++) tone(mtof(96 + pick([0, 4, 7, 12])), 0.05, { type: 'square', vol: 0.025, at: 0.5 + i * 0.06 });
+      },
       shoot() { if (limit('shoot', 0.09)) tone(1500, 0.04, { type: 'square', to: 700, vol: 0.018 }); },
       beam() { if (limit('beam', 0.12)) noise(0.12, { type: 'bandpass', freq: 2400, q: 6, vol: 0.05 }); },
       hit() { if (limit('hit', 0.06)) noise(0.04, { type: 'highpass', freq: 3000, vol: 0.06 }); },
@@ -1902,9 +1915,9 @@
     hud: $('hud'), score: $('hudScore'), multWrap: $('hudMultWrap'), mult: $('hudMult'), combo: $('hudCombo'),
     shards: $('hudShards'), fx: $('hudFx'), weapon: $('hudWeapon'), ups: $('hudUps'),
     bar: $('hudBar'), barLabel: $('hudBarLabel'), barFill: $('hudBarFill'),
-    menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'), clear: $('clear'), levels: $('levels'), armory: $('armory'),
+    menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'), clear: $('clear'), levels: $('levels'), armory: $('armory'), slots: $('slots'),
   };
-  const screens = ['menu', 'over', 'pause', 'shop', 'clear', 'levels', 'armory'];
+  const screens = ['menu', 'over', 'pause', 'shop', 'clear', 'levels', 'armory', 'slots'];
   // a thin bar under the weapon chip shows how long a dropped weapon lasts
   const wTimer = document.createElement('i');
   ui.ups.appendChild(wTimer);
@@ -1968,6 +1981,7 @@
     $('menuCoins').textContent = save.coins.toLocaleString('en-US');
     $('btnSound').textContent = Sound.muted ? 'Sound off' : 'Sound on';
     $('btnPlay').textContent = 'Play level ' + nextToPlay();
+    $('btnSlots').textContent = save.freeSpins > 0 ? `Lucky Rift · ${save.freeSpins} free` : 'Lucky Rift';
   }
 
   function clearRun() {
@@ -1989,6 +2003,13 @@
     showHud(true);
     last.score = last.mult = last.shards = -1; last.fx = null; last.bar = ''; last.barBoss = null; last.weapon = '';
     banner('LEVEL ' + n, mixHex(ZONES[LV().zone].grid, '#ffffff', 0.55), LV().name);
+    if (save.ticket && UPGRADES[save.ticket]) {
+      // a weapon ticket from the slot machine: start this level with that weapon
+      g.weapon = save.ticket; g.wTime = TICKET_TIME;
+      floatText(P.x, P.y - 60 * U, 'TICKET · ' + UPGRADES[save.ticket].name.toUpperCase() + ' ' + TICKET_TIME + 's', UPGRADES[save.ticket].color, 18);
+      save.ticket = null;
+      persist();
+    }
     Sound.startMusic();
   }
 
@@ -2015,7 +2036,11 @@
     save.coins += g.shards - g.banked;
     g.banked = g.shards;
     save.games++;
+    const gotSpin = save.freeSpins < FREE_SPIN_CAP;
+    if (gotSpin) save.freeSpins++;
     persist();
+    $('btnSpinNow').hidden = save.freeSpins <= 0;
+    $('btnSpinNow').textContent = gotSpin ? 'Free spin!' : `Free spins (${save.freeSpins})`;
     $('clearTitle').textContent = n === LEVELS.length ? 'Final level complete' : `Level ${n} complete`;
     $('clearName').textContent = LV().name;
     $('clearScore').textContent = score.toLocaleString('en-US');
@@ -2034,6 +2059,225 @@
     const hasNext = n < LEVELS.length;
     $('btnNext').hidden = !hasNext;
     show('clear');
+  }
+
+  // ---- Lucky Rift: a slot machine played with in-game shards only ----
+  // Strip frequencies set the odds: 7 = 1/20, gem = 4/20, each weapon = 3/20.
+  // With the pay table below the machine returns about 89% of the stake.
+  const SLOT_COST = 30, FREE_SPIN_CAP = 5, TICKET_TIME = 20;
+  const PAYTABLE = { seven3: 1000, gem3: 300, weapon3: 150, seven2: 150, gem2: 70, weapon2: 40, seven1: 20 };
+  function makeStrip(seed) {
+    const a = ['seven', 'gem', 'gem', 'gem', 'gem'];
+    for (const k of DROP_POOL) a.push(k, k, k);
+    let x = seed;
+    for (let i = a.length - 1; i > 0; i--) { x = (x * 9301 + 49297) % 233280; const j = Math.floor((x / 233280) * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  const reels = [makeStrip(7), makeStrip(19), makeStrip(42)].map((strip) => ({ strip, pos: (Math.random() * strip.length) | 0, from: 0, to: 0, t: 0, dur: 0, spinning: false, tick: 0, bump: 0 }));
+  const slot = { spinning: false, result: null, outcome: null, winT: 0, coins: [], shown: 0, target: 0, ret: 'menu', tease: false };
+  const slotCv = $('slotCanvas'), slotCtx = slotCv.getContext('2d');
+  let slotW = 300, slotH = 180;
+
+  function evalSpin(sym) {
+    const c = {};
+    for (const x of sym) c[x] = (c[x] || 0) + 1;
+    const triple = DROP_POOL.find((k) => c[k] === 3), pair = DROP_POOL.find((k) => c[k] === 2);
+    if (c.seven === 3) return { win: PAYTABLE.seven3, label: 'JACKPOT', tier: 3, line: [0, 1, 2] };
+    if (c.gem === 3) return { win: PAYTABLE.gem3, label: 'BIG WIN', tier: 2, line: [0, 1, 2] };
+    if (triple) return { win: PAYTABLE.weapon3, label: UPGRADES[triple].name.toUpperCase() + ' TICKET', tier: 2, ticket: triple, line: [0, 1, 2] };
+    const idxOf = (k) => sym.map((x, i) => (x === k ? i : -1)).filter((i) => i >= 0);
+    if (c.seven === 2) return { win: PAYTABLE.seven2, label: 'DOUBLE 7', tier: 1, line: idxOf('seven') };
+    if (c.gem === 2) return { win: PAYTABLE.gem2, label: 'WIN', tier: 1, line: idxOf('gem') };
+    if (pair) return { win: PAYTABLE.weapon2, label: 'WIN', tier: 1, line: idxOf(pair) };
+    if (c.seven === 1) return { win: PAYTABLE.seven1, label: 'LUCKY 7', tier: 1, line: idxOf('seven') };
+    return { win: 0, label: 'NO LUCK', tier: 0, line: [] };
+  }
+
+  function sizeSlots() {
+    slotW = Math.min(360, window.innerWidth - 32);
+    slotH = Math.round(slotW * 0.62);
+    slotCv.style.width = slotW + 'px'; slotCv.style.height = slotH + 'px';
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    slotCv.width = Math.round(slotW * d); slotCv.height = Math.round(slotH * d);
+    slotCtx.setTransform(d, 0, 0, d, 0, 0);
+  }
+
+  function openSlots(from) {
+    slot.ret = from;
+    if (from === 'menu') state.mode = 'shop';
+    sizeSlots();
+    slot.shown = save.coins;
+    $('slotsCoins').textContent = save.coins.toLocaleString('en-US');
+    refreshSlotsUI();
+    show('slots');
+  }
+  function closeSlots() {
+    if (slot.spinning) return;
+    if (slot.ret === 'clear') { $('btnSpinNow').hidden = save.freeSpins <= 0; $('btnSpinNow').textContent = `Free spins (${save.freeSpins})`; show('clear'); }
+    else { state.mode = 'menu'; refreshMenu(); show('menu'); }
+  }
+  function refreshSlotsUI() {
+    const b = $('btnSpin');
+    if (save.freeSpins > 0) b.textContent = `Free spin (${save.freeSpins})`;
+    else { b.innerHTML = 'Spin · <i class="gem"></i>'; b.append(String(SLOT_COST)); }
+    b.disabled = slot.spinning || (save.freeSpins <= 0 && save.coins < SLOT_COST);
+    $('slotTicket').hidden = !save.ticket;
+    if (save.ticket) $('slotTicket').textContent = `Ticket ready: your next level starts with ${UPGRADES[save.ticket].name} for ${TICKET_TIME}s`;
+  }
+
+  function spinSlots() {
+    if (slot.spinning) return;
+    const free = save.freeSpins > 0;
+    if (!free && save.coins < SLOT_COST) return;
+    if (free) save.freeSpins--; else save.coins -= SLOT_COST;
+    slot.target = save.coins;
+    persist();
+    const idx = slot.rig ? reels.map((r, n) => r.strip.indexOf(slot.rig[n])) : reels.map((r) => (Math.random() * r.strip.length) | 0);
+    slot.rig = null;
+    const sym = idx.map((v, n) => reels[n].strip[v]);
+    slot.tease = sym[0] === sym[1];
+    reels.forEach((r, n) => {
+      const L = r.strip.length, cur = ((Math.round(r.pos) % L) + L) % L;
+      const delta = (idx[n] - cur + L) % L;
+      r.from = Math.round(r.pos); r.to = r.from + delta + L * (2 + n); r.t = 0;
+      r.dur = 1.0 + n * 0.45 + (n === 2 && slot.tease ? 1.1 : 0);
+      r.spinning = true;
+    });
+    slot.spinning = true; slot.result = sym; slot.outcome = null; slot.winT = 0;
+    $('slotMsg').textContent = free ? 'Free spin…' : 'Spinning…';
+    $('slotMsg').className = 'slot-msg';
+    Sound.init(); Sound.lever(); haptic('light');
+    refreshSlotsUI();
+  }
+
+  function payout() {
+    const o = evalSpin(slot.result);
+    slot.outcome = o; slot.winT = 0;
+    if (o.win) { save.coins += o.win; slot.target = save.coins; }
+    if (o.ticket) save.ticket = o.ticket;
+    persist();
+    const msg = $('slotMsg');
+    msg.textContent = o.win ? `${o.label} · +${o.win} shards` : 'No luck this time';
+    msg.className = 'slot-msg' + (o.tier >= 2 ? ' big' : o.win ? ' win' : '');
+    if (o.win) {
+      Sound.win(o.tier); haptic(o.tier >= 2 ? 'heavy' : 'medium');
+      const n = o.tier >= 3 ? 90 : o.tier === 2 ? 50 : 14;
+      for (let i = 0; i < n; i++) slot.coins.push({ x: slotW / 2 + rand(-40, 40), y: slotH * 0.55, vx: rand(-260, 260), vy: rand(-420, -120), a: rand(0, TAU), life: rand(0.9, 1.6) });
+    } else Sound.lose();
+    refreshSlotsUI();
+  }
+
+  function updateSlots(dt) {
+    for (const [n, r] of reels.entries()) {
+      r.bump = Math.max(0, r.bump - dt);
+      if (!r.spinning) continue;
+      r.t += dt;
+      const k = Math.min(1, r.t / r.dur);
+      r.pos = r.from + (r.to - r.from) * (1 - Math.pow(1 - k, 3));
+      const tk = Math.floor(r.pos);
+      if (tk !== r.tick) { r.tick = tk; Sound.tick(); }
+      if (n === 2 && slot.tease && !r.teased && k > 0.35) { r.teased = true; Sound.tease(); }
+      if (k >= 1) { r.pos = r.to; r.spinning = false; r.bump = 0.15; r.teased = false; Sound.reelStop(); haptic('light'); }
+    }
+    if (slot.spinning && reels.every((r) => !r.spinning)) { slot.spinning = false; payout(); }
+    slot.winT += dt;
+    for (const c of slot.coins) { c.vy += 900 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.a += dt * 8; c.life -= dt; }
+    slot.coins = slot.coins.filter((c) => c.life > 0);
+    // count the wallet up like a payout counter
+    if (slot.shown !== save.coins) {
+      const diffC = save.coins - slot.shown;
+      slot.shown += Math.sign(diffC) * Math.max(1, Math.ceil(Math.abs(diffC) * dt * 4));
+      if (Math.abs(save.coins - slot.shown) < 1) slot.shown = save.coins;
+      $('slotsCoins').textContent = Math.round(slot.shown).toLocaleString('en-US');
+    }
+  }
+
+  function drawSym(c, kind, x, y, r, alpha) {
+    c.globalAlpha = alpha;
+    if (kind === 'seven') {
+      c.font = `italic 700 ${r * 2.1}px "Chakra Petch", "Arial Narrow", sans-serif`;
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = r * 0.22; c.strokeStyle = COL.shard; c.strokeText('7', x, y + r * 0.08);
+      c.fillStyle = COL.hazard; c.fillText('7', x, y + r * 0.08);
+      c.textBaseline = 'alphabetic';
+    } else if (kind === 'gem') {
+      c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r * 0.75, y); c.lineTo(x, y + r); c.lineTo(x - r * 0.75, y); c.closePath();
+      c.fillStyle = COL.shard; c.fill();
+      c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r * 0.25, y); c.lineTo(x, y + r); c.closePath();
+      c.fillStyle = 'rgba(255,255,255,0.45)'; c.fill();
+    } else {
+      c.beginPath(); c.arc(x, y, r * 0.95, 0, TAU);
+      c.fillStyle = UPGRADES[kind].color; c.fill();
+      c.strokeStyle = '#ffffff'; c.lineWidth = r * 0.12; c.stroke();
+      c.save(); c.translate(x, y); weaponIcon(c, kind, r * 0.52, '#0c0622'); c.restore();
+    }
+    c.globalAlpha = 1;
+  }
+
+  function renderSlots() {
+    const c = slotCtx, w = slotW, h = slotH, pad = 14, gap = 8;
+    c.clearRect(0, 0, w, h);
+    // cabinet
+    const gr = c.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#2a0c3a'); gr.addColorStop(1, '#12061f');
+    c.fillStyle = gr; c.fillRect(0, 0, w, h);
+    // marquee bulbs chase around the frame
+    const bulbs = 22, per = 2 * (w + h);
+    for (let i = 0; i < bulbs * 2; i++) {
+      let d = (i / (bulbs * 2)) * per, bx, by;
+      if (d < w) { bx = d; by = 4; } else if ((d -= w) < h) { bx = w - 4; by = d; } else if ((d -= h) < w) { bx = w - d; by = h - 4; } else { bx = 4; by = h - (d - w); }
+      const lit = (Math.floor(clock * (slot.spinning ? 14 : slot.outcome && slot.outcome.tier >= 2 ? 18 : 5)) + i) % 3 === 0;
+      c.fillStyle = lit ? COL.shard : 'rgba(255,210,63,0.18)';
+      c.beginPath(); c.arc(bx, by, 2.6, 0, TAU); c.fill();
+    }
+    const rw = (w - pad * 2 - gap * 2) / 3, top = pad, bh = h - pad * 2, cell = bh / 1.9, cy = top + bh / 2;
+    for (const [n, r] of reels.entries()) {
+      const x0 = pad + n * (rw + gap);
+      c.save();
+      c.beginPath(); c.rect(x0, top, rw, bh); c.clip();
+      const rg = c.createLinearGradient(0, top, 0, top + bh);
+      rg.addColorStop(0, '#0a0418'); rg.addColorStop(0.5, '#1d1036'); rg.addColorStop(1, '#0a0418');
+      c.fillStyle = rg; c.fillRect(x0, top, rw, bh);
+      const L = r.strip.length, base = Math.floor(r.pos), fast = r.spinning && r.t / r.dur < 0.75;
+      const bounce = r.bump > 0 ? Math.sin((r.bump / 0.15) * Math.PI) * 5 : 0;
+      for (let i = base - 2; i <= base + 2; i++) {
+        const y = cy + (r.pos - i) * cell + bounce;
+        const kind = r.strip[((i % L) + L) % L];
+        drawSym(c, kind, x0 + rw / 2, y, Math.min(rw, cell) * 0.33, fast ? 0.55 : 1);
+        if (fast) drawSym(c, kind, x0 + rw / 2, y - cell * 0.18, Math.min(rw, cell) * 0.33, 0.25);
+      }
+      // highlight winning reels
+      const o = slot.outcome;
+      if (o && o.line.includes(n) && !slot.spinning) {
+        const a = 0.5 + 0.5 * Math.sin(slot.winT * 12);
+        c.strokeStyle = rgba(COL.shard, 0.4 + 0.6 * a); c.lineWidth = 3;
+        c.strokeRect(x0 + 3, cy - cell / 2 + 2, rw - 6, cell - 4);
+      }
+      c.restore();
+      c.strokeStyle = 'rgba(243,236,255,0.18)'; c.lineWidth = 1.5; c.strokeRect(x0, top, rw, bh);
+    }
+    // payline
+    c.strokeStyle = rgba(COL.hazard, 0.65); c.lineWidth = 2;
+    c.beginPath(); c.moveTo(pad - 6, cy); c.lineTo(pad, cy); c.moveTo(w - pad, cy); c.lineTo(w - pad + 6, cy); c.stroke();
+    // win banner and coin shower
+    const o = slot.outcome;
+    if (o && o.tier >= 2 && slot.winT < 2.5) {
+      const sc = 1 + 0.15 * Math.sin(slot.winT * 10);
+      c.fillStyle = 'rgba(12,6,34,0.72)'; c.fillRect(0, h / 2 - 30, w, 60);
+      c.save(); c.translate(w / 2, h / 2); c.scale(sc, sc); c.transform(1, 0, -0.12, 1, 0, 0);
+      c.font = `italic 700 ${o.tier >= 3 ? 46 : 38}px "Chakra Petch", "Arial Narrow", sans-serif`;
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = 'rgba(12,6,34,0.75)'; c.fillText(o.label, 3, 3);
+      c.fillStyle = o.tier >= 3 ? hslHex((clock * 400) % 360, 100, 65) : COL.shard; c.fillText(o.label, 0, 0);
+      c.restore(); c.textBaseline = 'alphabetic';
+    }
+    for (const k of slot.coins) {
+      c.save(); c.translate(k.x, k.y); c.rotate(k.a); c.globalAlpha = Math.min(1, k.life);
+      c.scale(Math.abs(Math.cos(k.a)) * 0.7 + 0.3, 1);
+      c.fillStyle = COL.shard;
+      c.beginPath(); c.moveTo(0, -6); c.lineTo(4.5, 0); c.lineTo(0, 6); c.lineTo(-4.5, 0); c.closePath(); c.fill();
+      c.restore();
+    }
   }
 
   // ---- permanent gun upgrades ----
@@ -2265,6 +2509,7 @@
   window.addEventListener('keydown', (e) => {
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     keys.add(k);
+    if ((k === ' ' || k === 'Enter') && !ui.slots.hidden) { e.preventDefault(); spinSlots(); return; }
     if (k === ' ' || k === 'Enter') {
       if (state.mode === 'menu') { e.preventDefault(); startLevel(nextToPlay()); }
       else if (state.mode === 'over') { e.preventDefault(); startLevel(g.level); }
@@ -2277,7 +2522,7 @@
   window.addEventListener('keyup', (e) => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
   window.addEventListener('blur', () => { keys.clear(); pause(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
-  window.addEventListener('resize', resize);
+  window.addEventListener('resize', () => { resize(); if (!ui.slots.hidden) sizeSlots(); });
 
   $('btnPlay').addEventListener('click', () => startLevel(nextToPlay()));
   $('btnRetry').addEventListener('click', () => startLevel(g ? g.level : 1));
@@ -2290,6 +2535,11 @@
   $('btnArmory2').addEventListener('click', () => { Sound.click(); openArmory('over'); });
   $('btnArmory3').addEventListener('click', () => { Sound.click(); openArmory('clear'); });
   $('btnArmoryBack').addEventListener('click', () => { Sound.click(); closeArmory(); });
+  $('btnSlots').addEventListener('click', () => { Sound.init(); Sound.click(); openSlots('menu'); });
+  $('btnSpinNow').addEventListener('click', () => { Sound.click(); openSlots('clear'); });
+  $('btnSpin').addEventListener('click', spinSlots);
+  $('slotCanvas').addEventListener('click', spinSlots);
+  $('btnSlotsBack').addEventListener('click', () => { Sound.click(); closeSlots(); });
   $('btnNext').addEventListener('click', () => startLevel(Math.min(g.level + 1, LEVELS.length)));
   $('btnReplay').addEventListener('click', () => startLevel(g.level));
   $('btnSkins').addEventListener('click', () => { Sound.init(); Sound.click(); openShop('menu'); });
@@ -2312,6 +2562,7 @@
     update(rdt);
     render();
     syncHud();
+    if (!ui.slots.hidden) { updateSlots(rdt); renderSlots(); }
     requestAnimationFrame(frame);
   }
 
@@ -2326,6 +2577,8 @@
     get state() { return state.mode; }, get run() { return g; }, get boss() { return boss; }, start: (n) => startLevel(n || 1),
     unlockAll() { save.unlocked = LEVELS.length; persist(); },
     give(n) { save.coins += n; persist(); },
+    rig(sym) { slot.rig = sym; },
+    slotSim(n) { let paid = 0, wins = 0; for (let i = 0; i < n; i++) { const o = evalSpin(reels.map((r) => r.strip[(Math.random() * r.strip.length) | 0])); paid += o.win; if (o.win) wins++; } return { rtp: paid / (n * SLOT_COST), winRate: wins / n }; },
     dropAt(kind) { drops.push({ x: P.x, y: P.y - 10, kind, t: 0 }); },
     aimTarget() { const d = drops[0]; if (d && d.y > H * 0.3) return d.x; if (boss) return boss.x; const e = enemies.find((q) => !q.dead && q.y > 0); return e ? e.x : null; },
     steer(x) { P.tx = x; },

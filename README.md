@@ -16,6 +16,7 @@ Ein schnelles Ein-Finger-Arcade-Spiel im Neon-Look. Du steuerst ein Schiff durch
 | **Gegner & Bosse** | Drohnen (fliegen in Wellen), Diver (zielen kurz und rasen dann auf dich zu), Gunner (bleiben oben und schießen). Bosse: **Warden** (Salven, Ringe), **Hydra** (Spiralen, Laser, Geschosswände, ruft Drohnen), **Rift Core** (3 Phasen). Je später das Level, desto stärker ist der Boss (mehr Leben, schnellere und dichtere Angriffe). |
 | **Waffen & Upgrades** | Es ist immer nur **eine** Waffe aktiv, und sie schießt automatisch. Jedes Level beginnt mit der **Standardwaffe**. Im Menü **Upgrades** verbesserst du alle 6 Waffen mit Shards dauerhaft, jeweils von Lv1 bis Lv6 (Kosten 60, 150, 300, 550, 900): **Standard** (schneller, mehr Schaden, ab Lv4 Doppelschuss), **Spread** (Fächer aus 3 bis 8 Schüssen), **Rapid** (Dauerfeuer, 9 bis 19 Schuss pro Sekunde), **Homing** (zielsuchende Raketensalven), **Beam** (Laserstrahl), **Plasma** (große, durchschlagende Kugeln). |
 | **Waffen-Drops** | Gegner lassen die 5 Spezialwaffen fallen, klar erkennbar an Farbe, Symbol und Namen (gelb Spread, cyan Rapid, blau Homing, lila Beam, grün Plasma). Ein Drop ersetzt deine aktuelle Waffe **12 Sekunden lang** durch diese Waffe, auf deiner gekauften Stufe. Danach hast du wieder die Standardwaffe. Ein neuer Drop ersetzt die aktuelle Waffe und startet die 12 Sekunden neu. Oben links stehen die aktive Waffe, ihre Stufe und die Restzeit. Drops fallen vor und während des Bosskampfs. |
+| **Lucky Rift (Spielautomat)** | Ein Neon-Spielautomat im Menü mit 3 Walzen, Lauflichtern, Spannungsmoment auf der dritten Walze, Münzregen und Jackpot-Effekten. Ein Spin kostet 30 Shards, jedes geschaffte Level gibt einen Freispin (bis zu 5 gespeichert). Gewinne: 7-7-7 = 1000, drei Gems = 300, drei gleiche Waffen = 150 + **Waffen-Ticket** (das nächste Level startet 20 Sekunden lang mit dieser Waffe), zwei 7er = 150, zwei Gems = 70, zwei gleiche Waffen = 40, eine 7 = 20. Die Gewinnchance liegt bei etwa 53 %, die Auszahlungsquote bei etwa 88 %. Der Automat verbraucht also auf Dauer Shards. Gespielt wird **nur mit Shards aus dem Spiel**, nie mit echtem Geld. |
 | **Grazen** | Knapp an Gegnergeschossen vorbeifliegen bringt Punkte und lädt den Overdrive-Ring. |
 | **Power-ups** | Schild (fängt einen Treffer ab), Magnet (zieht Shards an), Zeitlupe. |
 | **Sterne** | Pro Level gibt es bis zu 3 Sterne: Boss besiegt, ohne Wiederbelebung, und 70 % der Gegner zerstört. Die Sterne stehen im Level-Menü, der Bestwert eines Levels zählt nur, wenn du es geschafft hast. |
@@ -52,6 +53,10 @@ In Xcode:
 6. *Product → Archive* ausführen und über App Store Connect hochladen.
 
 Für Android funktioniert es genauso mit `npm run android:add` und `npm run android:open` (Android Studio).
+
+## Hinweis zum Spielautomaten und zum App Store
+
+Apple behandelt Glücksspiel-Simulationen als eigene Inhaltsangabe („Simuliertes Glücksspiel“) beim Altersrating. Gib das in App Store Connect an, sonst droht eine Ablehnung. Solange Shards **nicht für echtes Geld verkauft werden**, bleibt Lucky Rift ein reines Spielelement. Wer später Shards per In-App-Kauf verkaufen will, muss nach den App-Store-Richtlinien die Gewinnchancen offenlegen (die Gewinntabelle steht im Automaten), und das Altersrating steigt. Das sollte dann bewusst entschieden werden.
 
 ## Was die Download-Zahlen treibt
 
