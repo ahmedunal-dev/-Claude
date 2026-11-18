@@ -73,7 +73,7 @@
     set(k, v) { try { localStorage.setItem('riftrunner_' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
   };
   const save = Object.assign({ best: 0, coins: 0, owned: [0], skin: 0, muted: false, games: 0, unlocked: 1, lv: {} }, store.get('save', {}));
-  save.gun = Object.assign({ spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 }, save.gun);
+  save.gun = Object.assign({ standard: 0, spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 }, save.gun);
   const persist = () => store.set('save', save);
 
   const SKINS = [
@@ -310,7 +310,7 @@
       tutorial: n === 1 && save.games < 3 ? 4 : 0, dying: 0, banner: null,
       level: n, phase: 'run', phaseT: 0, runLen: lv.len, rt: 0,
       enemyT: 2.5, dropT: 6.01, fireT: 0, homT: 0, beam: null,
-      buff: { spread: 0, rapid: 0, homing: 0, beam: 0, plasma: 0 },
+      weapon: 'standard', wTime: 0,
       kills: 0, bosses: 0, runSpawned: 0, runKills: 0,
     };
     resetCombat();
@@ -615,42 +615,48 @@
   // ---------- combat: weapons, enemies, weapon drops, bosses ----------
   // =====================================================================
   // Each level: dodge obstacles and shoot enemies, then one boss.
-  // One gun with five upgrade tracks. Levels are bought permanently in the
-  // Upgrades menu (save.gun); drops in a level only give a timed buff that
-  // adds BUFF_BONUS levels to one track for BUFF_TIME seconds.
+  // Only one weapon is active at a time. Every level starts with the Standard
+  // gun; a drop swaps it for another weapon for WEAPON_TIME seconds, then the
+  // Standard gun returns. Each weapon's level is bought permanently in the
+  // Upgrades menu (save.gun).
   const enemies = [], ebullets = [], pbullets = [], drops = [];
   let boss = null;
 
   const UPGRADES = {
+    standard: { name: 'Standard', color: '#f3ecff' },
     // cool, clearly separated hues so drops never read as warm-coloured hazards
-    spread: { name: 'Spread', color: '#ffe14d', what: '+1 shot' },
-    rapid: { name: 'Rapid', color: '#2ef2ff', what: 'faster fire' },
-    homing: { name: 'Homing', color: '#5b8cff', what: 'missiles' },
-    beam: { name: 'Beam', color: '#c08cff', what: 'laser beam' },
-    plasma: { name: 'Plasma', color: '#7dff5a', what: 'more damage' },
+    spread: { name: 'Spread', color: '#ffe14d' },
+    rapid: { name: 'Rapid', color: '#2ef2ff' },
+    homing: { name: 'Homing', color: '#5b8cff' },
+    beam: { name: 'Beam', color: '#c08cff' },
+    plasma: { name: 'Plasma', color: '#7dff5a' },
   };
-  const UP_MAX = 5, BUFF_BONUS = 2, BUFF_TIME = 10;
+  const UP_MAX = 5, WEAPON_TIME = 12;
   const UP_COST = [60, 150, 300, 550, 900];
   const DROP_POOL = ['spread', 'rapid', 'homing', 'beam', 'plasma'];
+  const WEAPON_ORDER = ['standard', ...DROP_POOL];
   const DROP_CHANCE = { drone: 0.2, diver: 0.35, gunner: 0.8 };
-  const HOMING_N = [0, 1, 2, 2, 3, 4, 4, 5];
-  // permanent level plus an active buff
-  function effUps() {
-    const u = {};
-    for (const k of DROP_POOL) u[k] = save.gun[k] + (g && g.buff[k] > 0 ? BUFF_BONUS : 0);
-    return u;
-  }
-  const gunLevel = () => { const u = effUps(); return 1 + DROP_POOL.reduce((a, k) => a + u[k], 0); };
-  const permGunLevel = () => 1 + DROP_POOL.reduce((a, k) => a + save.gun[k], 0);
-  // what one level of each track does, for the Upgrades menu
-  const fireRate = (l) => (1 / 0.18) * (1 + 0.24 * l);
-  const UP_TEXT = {
-    spread: (l) => `${1 + l} shot${l ? 's' : ''} per volley`,
-    rapid: (l) => `${fireRate(l).toFixed(1)} volleys per second`,
-    homing: (l) => (l ? `${HOMING_N[l]} missile${HOMING_N[l] > 1 ? 's' : ''} every ${(1.25 - 0.13 * l).toFixed(1)} s` : 'No missiles yet'),
-    beam: (l) => (l ? `Laser beam, ${2 + 2.5 * l} damage/s` : 'No laser beam yet'),
-    plasma: (l) => (l ? `+${30 * l}% damage${l >= 3 ? ', piercing shots' : ''}` : 'Base damage'),
+
+  // Stats of every weapon at permanent level l (0..5).
+  const WSTAT = {
+    standard: (l) => ({ rate: 5.5 * (1 + 0.12 * l), dmg: 1 + 0.2 * l, twin: l >= 3 }),
+    spread: (l) => ({ shots: 3 + l, rate: 3.8, dmg: 0.8 + 0.1 * l }),
+    rapid: (l) => ({ rate: 9 + 2 * l, dmg: 0.8 + 0.15 * l }),
+    homing: (l) => ({ shots: 2 + Math.floor(l / 2), every: 0.5 - 0.03 * l, dmg: 1.6 + 0.2 * l }),
+    beam: (l) => ({ dps: 10 + 4 * l, width: 6 + 2 * l }),
+    plasma: (l) => ({ rate: 1.6 + 0.3 * l, dmg: 5 + 1.2 * l, size: 9 + 1.5 * l }),
   };
+  const f1 = (v) => (Math.round(v * 10) / 10).toString();
+  // what a level of each weapon means, for the Upgrades menu
+  const UP_TEXT = {
+    standard: (l) => { const w = WSTAT.standard(l); return `${w.twin ? 'Twin shots' : 'Single shot'}, ${f1(w.rate)}/s, ${f1(w.dmg)} dmg`; },
+    spread: (l) => { const w = WSTAT.spread(l); return `${w.shots}-shot fan, ${f1(w.dmg)} dmg each`; },
+    rapid: (l) => { const w = WSTAT.rapid(l); return `${w.rate} shots/s, ${f1(w.dmg)} dmg`; },
+    homing: (l) => { const w = WSTAT.homing(l); return `${w.shots} missiles every ${f1(w.every)}s, ${f1(w.dmg)} dmg`; },
+    beam: (l) => { const w = WSTAT.beam(l); return `Laser beam, ${w.dps} dmg/s`; },
+    plasma: (l) => { const w = WSTAT.plasma(l); return `Piercing orbs, ${f1(w.dmg)} dmg, ${f1(w.rate)}/s`; },
+  };
+  const weaponLevel = (k) => save.gun[k] + 1;
 
   const ENEMY = {
     drone: { color: '#ff5a5a', hp: 2, r: 14, pts: 30 },
@@ -695,42 +701,49 @@
     return best;
   }
 
-  // One gun, shaped by the upgrades collected this level.
+  // Fires whichever single weapon is active, at its permanent level.
   function fireWeapon(rdt, list, c1) {
-    const u = effUps(), od = g.overdrive > 0 ? 1.6 : 1;
-    // Beam: a continuous laser on top of the gun, wider and hotter per level
-    if (u.beam > 0) {
-      const bw = (3 + 2 * u.beam) * U;
+    const k = g.weapon, l = save.gun[k], od = g.overdrive > 0 ? 1.6 : 1, col = UPGRADES[k].color;
+    const nose = P.y - P.r * 1.2, S = 940 * U;
+    if (k === 'beam') {
+      const w = WSTAT.beam(l), bw = w.width * U;
       let hit = null;
       for (const e of list) if (Math.abs(e.x - P.x) < e.r + bw / 2 && e.y < P.y && (!hit || e.y > hit.y)) hit = e;
       g.beam = { w: bw, y: hit ? hit.y + hit.r * 0.4 : -20 * U };
-      if (hit) damage(hit, (2 + 2.5 * u.beam) * od * rdt, P.x, hit.y + hit.r * 0.5, true);
+      if (hit) damage(hit, w.dps * od * rdt, P.x, hit.y + hit.r * 0.5, true);
       Sound.beam();
-    } else g.beam = null;
-    // Homing: missile salvos, more missiles and shorter reload per level
-    if (u.homing > 0) {
-      g.homT -= rdt;
-      if (g.homT <= 0) {
-        g.homT = Math.max(0.45, 1.25 - 0.13 * u.homing);
-        const n = HOMING_N[Math.min(u.homing, HOMING_N.length - 1)];
-        for (let i = 0; i < n; i++) {
-          const k = i - (n - 1) / 2;
-          pbullets.push({ x: P.x + k * 14 * U, y: P.y, vx: (k || (i % 2 ? 1 : -1) * 0.5) * 320 * U, vy: -380 * U, dmg: 2 * od, r: 5 * U, kind: 'missile', color: UPGRADES.homing.color, life: 2.4 });
-        }
-      }
+      return;
     }
-    // Main gun: Spread adds shots, Rapid shortens the reload, Plasma adds damage and size
+    g.beam = null;
     g.fireT -= rdt;
     if (g.fireT > 0) return;
-    g.fireT = 0.18 / (1 + 0.24 * u.rapid);
-    const n = 1 + u.spread, dmg = (1 + 0.3 * u.plasma) * od, heavy = u.plasma >= 3;
-    const r = (4 + u.plasma * 0.9) * U, nose = P.y - P.r * 1.2, S = 940 * U;
-    for (let i = 0; i < n; i++) {
-      const a = (i - (n - 1) / 2) * 0.11;
-      pbullets.push({
-        x: P.x, y: nose, vx: Math.sin(a) * S, vy: -Math.cos(a) * S, dmg, r,
-        kind: heavy ? 'plasma' : 'bolt', color: heavy ? UPGRADES.plasma.color : c1, pierce: heavy ? new Set() : null,
-      });
+    const bolt = (x, a, dmg, extra) => pbullets.push(Object.assign({
+      x, y: nose, vx: Math.sin(a) * S, vy: -Math.cos(a) * S, dmg: dmg * od, r: 4 * U, kind: 'bolt', color: col, pierce: null,
+    }, extra));
+    if (k === 'standard') {
+      const w = WSTAT.standard(l);
+      if (w.twin) { bolt(P.x - 6 * U, 0, w.dmg, { color: c1 }); bolt(P.x + 6 * U, 0, w.dmg, { color: c1 }); }
+      else bolt(P.x, 0, w.dmg, { color: c1 });
+      g.fireT = 1 / w.rate;
+    } else if (k === 'spread') {
+      const w = WSTAT.spread(l);
+      for (let i = 0; i < w.shots; i++) bolt(P.x, (i - (w.shots - 1) / 2) * 0.12, w.dmg);
+      g.fireT = 1 / w.rate;
+    } else if (k === 'rapid') {
+      const w = WSTAT.rapid(l);
+      bolt(P.x + rand(-6, 6) * U, rand(-0.05, 0.05), w.dmg, { r: 3 * U });
+      g.fireT = 1 / w.rate;
+    } else if (k === 'homing') {
+      const w = WSTAT.homing(l);
+      for (let i = 0; i < w.shots; i++) {
+        const o = i - (w.shots - 1) / 2;
+        pbullets.push({ x: P.x + o * 14 * U, y: P.y, vx: (o || 0.4) * 360 * U, vy: -380 * U, dmg: w.dmg * od, r: 5 * U, kind: 'missile', color: col, life: 2.4 });
+      }
+      g.fireT = w.every;
+    } else if (k === 'plasma') {
+      const w = WSTAT.plasma(l);
+      bolt(P.x, 0, w.dmg, { kind: 'plasma', r: w.size * U, pierce: new Set(), vy: -S * 0.6 });
+      g.fireT = 1 / w.rate;
     }
     Sound.shoot();
   }
@@ -775,11 +788,14 @@
     drops.push({ x: clamp(x, 30 * U, W - 30 * U), y, kind: pick(DROP_POOL), t: 0 });
   }
 
+  // A drop swaps the single active weapon for a while.
   function pickBuff(d) {
     const def = UPGRADES[d.kind];
-    g.buff[d.kind] = BUFF_TIME;
-    floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' BOOST', def.color, 22);
-    floatText(d.x, d.y - 8 * U, '+' + BUFF_BONUS + ' for ' + BUFF_TIME + 's', COL.ink, 13);
+    g.weapon = d.kind;
+    g.wTime = WEAPON_TIME;
+    g.fireT = 0; g.beam = null;
+    floatText(d.x, d.y - 30 * U, def.name.toUpperCase() + ' LV' + weaponLevel(d.kind), def.color, 22);
+    floatText(d.x, d.y - 8 * U, WEAPON_TIME + ' seconds', COL.ink, 13);
     burst(d.x, d.y, 30, def.color, 360, 3, 0.7);
     flash = 0.3; flashColor = def.color;
     Sound.pickup();
@@ -1087,7 +1103,13 @@
   function updateCombat(dt, rdt, playing, c1) {
     if (playing) {
       g.phaseT += dt;
-      for (const k of DROP_POOL) if (g.buff[k] > 0) g.buff[k] = Math.max(0, g.buff[k] - rdt);
+      if (g.weapon !== 'standard') {
+        g.wTime -= rdt;
+        if (g.wTime <= 0) {
+          g.weapon = 'standard'; g.wTime = 0; g.beam = null; g.fireT = 0;
+          floatText(P.x, P.y - 44 * U, 'STANDARD GUN', COL.dim, 14);
+        }
+      }
       if (g.phase === 'run') {
         g.rt += dt;
         g.enemyT -= dt;
@@ -1176,7 +1198,10 @@
     c.strokeStyle = col; c.fillStyle = col;
     c.lineWidth = 2.6 * U; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath();
-    if (kind === 'spread') {
+    if (kind === 'standard') {
+      c.moveTo(0, s * 0.95); c.lineTo(0, -s * 0.2); c.stroke();
+      c.beginPath(); c.moveTo(0, -s * 1.05); c.lineTo(s * 0.55, -s * 0.2); c.lineTo(-s * 0.55, -s * 0.2); c.closePath(); c.fill();
+    } else if (kind === 'spread') {
       // three full arrows fanning upward from one point
       const px = 0, py = s * 0.9;
       for (const a of [-0.6, 0, 0.6]) {
@@ -1863,7 +1888,7 @@
     ctx.fillText('DRAG ANYWHERE TO STEER', W / 2, H * 0.92);
     ctx.font = `700 ${12 * U}px "Chakra Petch", sans-serif`;
     ctx.fillStyle = COL.dim;
-    ctx.fillText('YOUR SHIP FIRES ON ITS OWN · GRAB BOOSTS', W / 2, H * 0.92 + 20 * U);
+    ctx.fillText('YOUR SHIP FIRES ON ITS OWN · GRAB WEAPON DROPS', W / 2, H * 0.92 + 20 * U);
     const hx = W / 2 + Math.sin(clock * 3) * 60 * U, hy = H * 0.92 - 34 * U;
     ctx.strokeStyle = COL.ink; ctx.lineWidth = 2 * U;
     ctx.beginPath(); ctx.arc(hx, hy, 10 * U, 0, TAU); ctx.stroke();
@@ -1880,13 +1905,9 @@
     menu: $('menu'), over: $('over'), pause: $('pause'), shop: $('shop'), clear: $('clear'), levels: $('levels'), armory: $('armory'),
   };
   const screens = ['menu', 'over', 'pause', 'shop', 'clear', 'levels', 'armory'];
-  // five mini bars in the HUD, one per upgrade type
-  const upBars = {};
-  for (const k of DROP_POOL) {
-    const sp = document.createElement('span'), fill = document.createElement('i');
-    sp.style.color = UPGRADES[k].color; sp.title = UPGRADES[k].name;
-    sp.appendChild(fill); ui.ups.appendChild(sp); upBars[k] = fill;
-  }
+  // a thin bar under the weapon chip shows how long a dropped weapon lasts
+  const wTimer = document.createElement('i');
+  ui.ups.appendChild(wTimer);
   let shopReturn = 'menu';
   function show(name) {
     for (const s of screens) ui[s].hidden = s !== name;
@@ -1914,17 +1935,18 @@
     if (label !== last.bar) { ui.barLabel.textContent = label; last.bar = label; }
     if (isBoss !== last.barBoss) { ui.bar.classList.toggle('boss', isBoss); last.barBoss = isBoss; }
     ui.barFill.style.transform = `scaleX(${clamp(fill, 0, 1).toFixed(3)})`;
-    const eu = effUps(), wk = DROP_POOL.map((k) => eu[k]).join('');
+    const wk = g.weapon + Math.ceil(g.wTime);
     if (wk !== last.weapon) {
-      ui.weapon.textContent = 'Gun Lv ' + gunLevel();
-      for (const k of DROP_POOL) {
-        upBars[k].style.height = (eu[k] / (UP_MAX + BUFF_BONUS)) * 100 + '%';
-        upBars[k].parentNode.classList.toggle('boosted', g.buff[k] > 0);
-      }
+      const def = UPGRADES[g.weapon];
+      ui.weapon.textContent = def.name + ' Lv' + weaponLevel(g.weapon) + (g.weapon === 'standard' ? '' : ' · ' + Math.ceil(g.wTime) + 's');
+      ui.weapon.style.color = def.color;
+      ui.weapon.style.borderColor = g.weapon === 'standard' ? '' : def.color;
+      ui.ups.style.color = def.color;
+      ui.ups.hidden = g.weapon === 'standard';
       last.weapon = wk;
     }
+    if (g.weapon !== 'standard') wTimer.style.transform = `scaleX(${clamp(g.wTime / WEAPON_TIME, 0, 1).toFixed(3)})`;
     const fx = [];
-    for (const k of DROP_POOL) if (g.buff[k] > 0) fx.push([UPGRADES[k].color, UPGRADES[k].name + ' +' + BUFF_BONUS + ' ' + Math.ceil(g.buff[k]) + 's']);
     if (g.overdrive > 0) fx.push(['#ffffff', 'Overdrive ' + Math.ceil(g.overdrive)]);
     if (g.shield) fx.push([COL.shield, 'Shield']);
     if (g.magnet > 0) fx.push([COL.magnet, 'Magnet ' + Math.ceil(g.magnet)]);
@@ -2031,7 +2053,7 @@
     $('armoryCoins').textContent = save.coins.toLocaleString('en-US');
     const list = $('armoryList');
     list.innerHTML = '';
-    for (const k of DROP_POOL) {
+    for (const k of WEAPON_ORDER) {
       const def = UPGRADES[k], l = save.gun[k], maxed = l >= UP_MAX, cost = maxed ? 0 : UP_COST[l];
       const card = document.createElement('div');
       card.className = 'up-card';
@@ -2046,12 +2068,12 @@
       const info = document.createElement('div');
       info.className = 'up-info';
       const name = document.createElement('b');
-      name.textContent = def.name; name.style.color = def.color;
+      name.textContent = def.name + ' Lv' + (l + 1); name.style.color = def.color;
       const pips = document.createElement('span');
       pips.className = 'pips'; pips.style.color = def.color;
       for (let i = 0; i < UP_MAX; i++) { const e = document.createElement('i'); if (i < l) e.className = 'on'; pips.appendChild(e); }
       const txt = document.createElement('small');
-      txt.textContent = UP_TEXT[k](l);
+      txt.textContent = (k === 'standard' ? 'Start weapon. ' : '') + UP_TEXT[k](l);
       if (!maxed) { const nx = document.createElement('em'); nx.textContent = ' → ' + UP_TEXT[k](l + 1); txt.append(document.createElement('br'), nx); }
       info.append(name, pips, txt);
       const buy = document.createElement('button');
@@ -2061,7 +2083,7 @@
         buy.innerHTML = '<i class="gem"></i>';
         buy.append(String(cost));
         buy.disabled = save.coins < cost;
-        buy.setAttribute('aria-label', `Upgrade ${def.name} to level ${l + 1} for ${cost} shards`);
+        buy.setAttribute('aria-label', `Upgrade ${def.name} to level ${l + 2} for ${cost} shards`);
         buy.addEventListener('click', () => {
           if (save.coins < cost || save.gun[k] >= UP_MAX) return;
           save.coins -= cost;
@@ -2118,7 +2140,7 @@
     $('overName').textContent = LV().name;
     $('overBest').textContent = lvSave(g.level).best ? lvSave(g.level).best.toLocaleString('en-US') : '–';
     $('overShards').textContent = g.shards;
-    $('overGun').textContent = 'Lv ' + permGunLevel();
+    $('overGun').textContent = UPGRADES[g.weapon].name;
     $('overReach').textContent = g.phase === 'run' ? Math.floor((g.phaseT / g.runLen) * 100) + '%' : 'Boss';
     const rv = $('btnRevive');
     rv.hidden = g.revived;
@@ -2304,6 +2326,7 @@
     get state() { return state.mode; }, get run() { return g; }, get boss() { return boss; }, start: (n) => startLevel(n || 1),
     unlockAll() { save.unlocked = LEVELS.length; persist(); },
     give(n) { save.coins += n; persist(); },
+    dropAt(kind) { drops.push({ x: P.x, y: P.y - 10, kind, t: 0 }); },
     aimTarget() { const d = drops[0]; if (d && d.y > H * 0.3) return d.x; if (boss) return boss.x; const e = enemies.find((q) => !q.dead && q.y > 0); return e ? e.x : null; },
     steer(x) { P.tx = x; },
     showcase() { DROP_POOL.forEach((k, i) => drops.push({ x: W * (0.14 + i * 0.18), y: H * 0.45 + (i % 2) * 70 * U, kind: k, t: i })); },
